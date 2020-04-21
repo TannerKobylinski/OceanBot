@@ -1,7 +1,9 @@
 const fs = require('fs');
 const Discord = require('discord.js');
 const dotenv = require('dotenv');
-const storage = require('node-persist');
+let robot = {};
+robot.storage = require('node-persist');
+robot.https = require("https");
 
 /**
  * INIT
@@ -24,7 +26,7 @@ client.login(BOT_TOKEN);
  */
 
 client.on('message', async message => {
-    let BOT_PREFIX = await storage.getItem('BOT_PREFIX');
+    let BOT_PREFIX = await robot.storage.getItem('BOT_PREFIX');
     if (!message.content.startsWith(BOT_PREFIX) || message.author.bot) return;
 
     const args = message.content.slice(BOT_PREFIX.length).split(/\s+/);
@@ -32,15 +34,15 @@ client.on('message', async message => {
     if (!client.commands.has(command)) return;
 
     try {
-        client.commands.get(command).execute(message, storage, args);
+        client.commands.get(command).execute(robot, message, args);
     } catch (error) {
         console.error(error);
     }
 });
 
 client.once('ready', async () => {
-    await storage.init();
-    BOT_PREFIX = await storage.getItem('BOT_PREFIX') || '!';
+    await robot.storage.init();
+    BOT_PREFIX = await robot.storage.getItem('BOT_PREFIX') || '!';
     getConnectedServers();
 });
 
