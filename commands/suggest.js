@@ -22,7 +22,7 @@ module.exports = {
     async execute(robot, message, args) {
         let options = [];
         for(let i=args.length-1; i>=0; i--){
-            let foundOption = args[i].match(/\-\-(\w+)/);
+            let foundOption = args[i].match(/\-\-(\w+[\1-]?\w+)/);
             if(!foundOption) continue;
             options.push(foundOption[1]);
             args.splice(i,1);
@@ -91,8 +91,7 @@ module.exports = {
         if(!cachedGameList){
             console.log(`Key ${cacheKey} not found in cache`);
         }
-        let useCache = cachedGameList && cachedGameList.date_cached == new Date().toLocaleDateString();
-        console.log('Using cache? ', useCache);
+        let useCache = !options.includes('no-cache') && cachedGameList && cachedGameList.date_cached == new Date().toLocaleDateString();
 
         if(useCache) {
             filteredGames = cachedGameList.games;
