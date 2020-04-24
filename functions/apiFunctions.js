@@ -10,6 +10,10 @@ module.exports = {
                     body += data;
                 });
                 res.on("end", () => {
+                    if(body.includes('Error')){
+                        reject('GET Error');
+                        return;
+                    }
                     body = JSON.parse(body);
                     resolve(body);
                 });
