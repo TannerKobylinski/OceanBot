@@ -19,14 +19,7 @@ const MAX_GAME_SUGGESTION_NUM = 5;
 module.exports = {
     name: 'suggest',
     description: 'Suggest a steam game',
-    async execute(robot, message, args) {
-        let options = [];
-        for(let i=args.length-1; i>=0; i--){
-            let foundOption = args[i].match(/\-\-(\w+[\1-]?\w+)/);
-            if(!foundOption) continue;
-            options.push(foundOption[1]);
-            args.splice(i,1);
-        }
+    async execute(robot, message, args, options) {
         let STEAM_API_KEY = process.env.STEAM_API_KEY;
         if(!STEAM_API_KEY) {
             console.error("STEAM_API_KEY not set");

@@ -31,10 +31,17 @@ client.on('message', async message => {
 
     const args = message.content.slice(BOT_PREFIX.length).split(/\s+/);
     const command = args.shift().toLowerCase();
+    let options = [];
+    for(let i=args.length-1; i>=0; i--){
+        let foundOption = args[i].match(/\-\-(\w+[\1-]?\w+)/);
+        if(!foundOption) continue;
+        options.push(foundOption[1]);
+        args.splice(i,1);
+    }
     if (!client.commands.has(command)) return;
 
     try {
-        client.commands.get(command).execute(robot, message, args);
+        client.commands.get(command).execute(robot, message, args, options);
     } catch (error) {
         console.error(error);
     }

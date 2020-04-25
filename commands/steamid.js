@@ -3,19 +3,21 @@ const Discord = require('discord.js');
 module.exports = {
     name: 'steamid',
     description: 'Set/view a user\'s Steam ID',
-    async execute(robot, message, args) {
+    async execute(robot, message, args, options) {
         if(args[0]){
             let action = args[0];
             if(action!='set' && action!='view'){
                 console.error('[steamid]: Unrecognized action');
                 return;
             }
+            args.splice(0,1);
             let configuredUsers = await robot.storage.getItem('USERS_CONFIG') || {};
             console.log('Users: ', configuredUsers);
             let steamID;
 
             if(action == 'set'){
-                steamID = args[args.length-1].match(/\d+/)[0];
+                steamID = args[args.length-1].match(/\d+/);
+                if(steamID) steamID = steamID[0];
                 if(!steamID){
                     console.error("Missing Steam ID / Profile");
                     return;
@@ -23,7 +25,7 @@ module.exports = {
                 args.pop();
             }
 
-            let discUser = args[1]? getUserFromName(message, args[1]) : message.author;
+            let discUser = args.length>0? getUserFromName(message, args.join(' ')) : message.author;
             if(!discUser){
                 message.channel.send(`User not found on server`);
                 return;
