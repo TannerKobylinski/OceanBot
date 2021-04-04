@@ -48,9 +48,10 @@ module.exports = {
                 return;
             }
         }
-
+        let suggestAll;
         if(args[0]){
             let suggestNum = args[0].match(/\d+/);
+            suggestAll = args[0].match(/all/i);
             if(suggestNum){
                 numOfSuggestions = Math.min(suggestNum, MAX_GAME_SUGGESTION_NUM);
                 numOfSuggestions = Math.max(numOfSuggestions, 0);
@@ -131,24 +132,51 @@ module.exports = {
             }
             await robot.storage.setItem(cacheKey, setCached);
         }
-
-        message.channel.send(`Suggesting${numOfSuggestions>1? ` ${numOfSuggestions}` : ``} random game${numOfSuggestions>1? `s` : ``} from ${filteredGames.length} games in common`);
-        console.log('num suggestions: ', numOfSuggestions);
-        for(let i=0; i<numOfSuggestions; i++){
-            let index = Math.floor(Math.random() * filteredGames.length);
-            let suggestion = filteredGames[index];
-            filteredGames.splice(index,1);
-
-            message.channel.send({embed: new Discord.MessageEmbed()
-                .setImage(`https://steamcdn-a.akamaihd.net/steam/apps/${suggestion.appid}/library_600x900_2x.jpg`)
-                .setTitle(`${suggestion.name}`)
-                .setURL(`https://store.steampowered.com/app/${suggestion.appid}`)
-                .addField(`Average Playtime`, `${(suggestion.avg_playtime/60).toFixed(1)} hours`)
-                .addField(`Categories`, `\`${suggestion.categories.map(g => g.description).join('`, `')}\``)
-            });
+        if(suggestAll){
+            message.channel.send(`Listing all ${filteredGames.length} games in common`);
+            console.log('num suggestions: ', numOfSuggestions);
+            for(let i=0; i<filteredGames.length; i++){
+                let suggestion = filteredGames[i];
+                sendDiscordEmbeddedSlim(message, suggestion);
+                await sleep(1000);
+            }
+        }
+        else {
+            message.channel.send(`Suggesting${numOfSuggestions>1? ` ${numOfSuggestions}` : ``} random game${numOfSuggestions>1? `s` : ``} from ${filteredGames.length} games in common`);
+            console.log('num suggestions: ', numOfSuggestions);
+            for(let i=0; i<numOfSuggestions; i++){
+                let index = Math.floor(Math.random() * filteredGames.length);
+                let suggestion = filteredGames[index];
+                filteredGames.splice(index,1);
+                sendDiscordEmbeddedFull(message, suggestion);
+            }
         }
     },
 };
+
+function sendDiscordEmbeddedFull(message, game){
+    message.channel.send({embed: new Discord.MessageEmbed()
+        .setImage(`https://steamcdn-a.akamaihd.net/steam/apps/${game.appid}/library_600x900_2x.jpg`)
+        .setTitle(`${game.name}`)
+        .setURL(`https://store.steampowered.com/app/${game.appid}`)
+        .addField(`Average Playtime`, `${(game.avg_playtime/60).toFixed(1)} hours`)
+        .addField(`Categories`, `\`${game.categories.map(g => g.description).join('`, `')}\``)
+    });
+}
+
+function sendDiscordEmbeddedSlim(message, game){
+    message.channel.send({embed: new Discord.MessageEmbed()
+        .setTitle(`${game.name}`)
+        .setURL(`https://store.steampowered.com/app/${game.appid}`)
+        .addField(`Average Playtime`, `${(game.avg_playtime/60).toFixed(1)} hours`)
+    });
+}
+
+function sleep(ms) {
+    return new Promise((resolve) => {
+        setTimeout(resolve, ms);
+    });
+}
 
 function generateCacheKey(users){
     users.sort((a,b) => {
