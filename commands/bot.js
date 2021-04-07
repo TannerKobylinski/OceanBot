@@ -1,4 +1,4 @@
-module.exports = {
+module.exports = [{
     name: 'prefix',
     description: 'View or set command prefix',
     async execute(robot, message, args) {
@@ -10,4 +10,4 @@ module.exports = {
         let set = await robot.storage.getItem('BOT_PREFIX');
         message.channel.send(`Command prefix set to ${set}`);
     },
-};
+}];

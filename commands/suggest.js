@@ -16,9 +16,9 @@ const SUGGEST_CATEGORIES = [
 ];
 const MAX_GAME_SUGGESTION_NUM = 5;
 
-module.exports = {
+module.exports = [{
     name: 'suggest',
-    description: 'Suggest a steam game',
+    description: 'Suggest a Steam game',
     async execute(robot, message, args, options) {
         let STEAM_API_KEY = process.env.STEAM_API_KEY;
         if(!STEAM_API_KEY) {
@@ -152,7 +152,7 @@ module.exports = {
             }
         }
     },
-};
+}];
 
 function sendDiscordEmbeddedFull(message, game){
     message.channel.send({embed: new Discord.MessageEmbed()

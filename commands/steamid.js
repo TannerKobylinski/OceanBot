@@ -1,8 +1,13 @@
 const Discord = require('discord.js');
 
-module.exports = {
+module.exports = [{
     name: 'steamid',
     description: 'Set/view a user\'s Steam ID',
+    examples: [
+        'steamid set <disc_username> <steam_id> - (set another user)',
+        'steamid set <steam_id> - (set self)',
+        'steamid view <disc_username> - (view steam id)',
+    ],
     async execute(robot, message, args, options) {
         if(args[0]){
             let action = args[0];
@@ -63,7 +68,7 @@ module.exports = {
             console.error("[steamid]: Missing parameters");
         }
     }
-};
+}];
 
 function getUserFromName(message, userName){
     for(let [userID, object] of message.guild.members.cache){
