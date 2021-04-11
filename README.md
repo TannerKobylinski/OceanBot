@@ -1,4 +1,4 @@
-A bot to do things
+A bot to do shitty things in discord
 
 
 ### Command Ideas

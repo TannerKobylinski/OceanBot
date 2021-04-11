@@ -227,7 +227,7 @@ async function getGamesDetails(robot, gameList){
 }
 
 function gameCompare(users){
-    let gamesArrayOne = users[0].games;
+    let gamesArrayOne = users[0].games || [];
     gamesArrayOne = gamesArrayOne.map(game => {
         return {
             appid: game.appid,

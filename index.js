@@ -1,6 +1,8 @@
 const fs = require('fs');
 const Discord = require('discord.js');
 const dotenv = require('dotenv');
+const storageFunctions = require('./functions/storageFunctions');
+
 let robot = {};
 robot.storage = require('node-persist');
 robot.https = require("https");
@@ -19,6 +21,7 @@ for (const file of commandFiles) {
     }
 }
 robot.commands = client.commands;
+robot.voice = client.voice;
 
 dotenv.config();
 const BOT_TOKEN = process.env.DISCORD_TOKEN;
@@ -29,7 +32,8 @@ client.login(BOT_TOKEN);
  */
 
 client.on('message', async message => {
-    let BOT_PREFIX = await robot.storage.getItem('BOT_PREFIX');
+    let serverId = message.channel.guild.id;
+    const BOT_PREFIX = await storageFunctions.getPrefixAsync(robot, serverId);
     robot.prefix = BOT_PREFIX;
     if (!message.content.startsWith(BOT_PREFIX) || message.author.bot) return;
 
@@ -48,7 +52,13 @@ client.on('message', async message => {
     }
 
     try {
-        client.commands.get(command).execute(robot, message, args, options);
+        let execCommand = client.commands.get(command);
+        if(memberCanExecute(message.member, execCommand)){
+            execCommand.execute(robot, message, args, options);
+        }
+        else {
+            console.log(`User ${message.member.name} lacks ${execCommand.permissions.join(' or ')} permissions!`);
+        }
     } catch (error) {
         console.error(error);
     }
@@ -56,9 +66,26 @@ client.on('message', async message => {
 
 client.once('ready', async () => {
     await robot.storage.init();
-    BOT_PREFIX = await robot.storage.getItem('BOT_PREFIX') || '!';
     getConnectedServers();
 });
+
+// client.on('voiceStateUpdate', (newState, oldState) =>{
+//     let newUserChannel = oldState.channelID;
+//     let oldUserChannel = newState.channelID;
+//     let channels = client.voice.connections;
+
+//     if(newUserChannel && newUserChannel!=oldUserChannel){// user joins
+//         console.log('user joins');
+//     }
+//     else if(!newUserChannel && oldUserChannel){// user leaves
+//         console.log('user leaves');
+
+//         for(const [id, channel] of channels){
+//             console.log(channel);
+//         }
+//         // if(channels.has())
+//     }
+// })
 
 /**
  * FUNCTIONS
@@ -70,5 +97,12 @@ function getConnectedServers(){
         serverNames.push(guild.name);
     })
     console.log(`Connected to ${serverNames.length} server${serverNames.length>1? 's' : ''}: ${serverNames.join(', ')}`);
-    console.log(`Prefix commands with: \`${BOT_PREFIX}\``);
+}
+
+function memberCanExecute(member, command){
+    if(!command.permissions) return true;
+    for(let p of command.permissions){
+        if(member.hasPermission(p)) return true;
+    }
+    return false;
 }
