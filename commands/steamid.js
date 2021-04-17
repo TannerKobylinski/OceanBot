@@ -2,7 +2,7 @@ const Discord = require('discord.js');
 
 module.exports = [{
     name: 'steamid',
-    description: 'Set/view a user\'s Steam ID',
+    description: 'Set/view a user\'s Steam ID for use with the suggest command',
     examples: [
         'steamid set <disc_username> <steam_id> - (set another user)',
         'steamid set <steam_id> - (set self)',
@@ -35,7 +35,6 @@ module.exports = [{
                 message.channel.send(`User not found on server`);
                 return;
             }
-            console.log(discUser);
             let discUserID = discUser.id;
             let userConfig = configuredUsers[discUserID];
 

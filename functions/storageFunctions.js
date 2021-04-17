@@ -1,7 +1,7 @@
 const DEFAULT_PREFIX = '!';
 const PREFIX_STORAGE_KEY = 'SERVER_PREFIXES';
-const SERVER_SETTING_KEY = 'SERVER_SETTINGS';
 const AUDIO_METADATA_KEY = 'AUDIO_METADATA';
+const SERVER_DATA_KEY = 'SERVER_DATA';
 
 module.exports = {
     getPrefixAsync: async function(robot, serverId){
@@ -13,17 +13,35 @@ module.exports = {
         prefixStorage[serverId] = prefix;
         await robot.storage.setItem(PREFIX_STORAGE_KEY, prefixStorage);
     },
-    getServerSettingAsync: async function(robot, serverId, setting){
 
-    },
-    setServerSettingAsync: async function(robot, serverId, setting, value){
-
-    },
     getAudioMetadataAsync: async function(robot){
         let meta = await robot.storage.getItem(AUDIO_METADATA_KEY) || {};
         return meta;
     },
     setAudioMetadataAsync: async function(robot, meta){
         await robot.storage.setItem(AUDIO_METADATA_KEY, meta);
+    },
+
+    getServerDataAsync: async function(robot, serverId){
+        let data = await robot.storage.getItem(SERVER_DATA_KEY) || {};
+        return data[serverId] || {};
+    },
+    setServerDataAsync: async function(robot, serverId, newData){
+        let data = await robot.storage.getItem(SERVER_DATA_KEY) || {};
+        data[serverId] = newData;
+        await robot.storage.setItem(SERVER_DATA_KEY, data);
+    },
+
+    getServerUserDataAsync: async function(robot, serverId, userId){
+        let data = await robot.storage.getItem(SERVER_DATA_KEY) || {};
+        let serverData = data[serverId] || {};
+        let userData = serverData[userId] || {};
+        return userData;
+    },
+    setServerUserDataAsync: async function(robot, serverId, userId, newData){
+        let data = await robot.storage.getItem(SERVER_DATA_KEY) || {};
+        if(!data[serverId]) data[serverId] = {};
+        data[serverId][userId] = newData;
+        await robot.storage.setItem(SERVER_DATA_KEY, data);
     }
 }

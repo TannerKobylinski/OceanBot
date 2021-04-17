@@ -2,15 +2,15 @@ const fs = require('fs');
 const Discord = require('discord.js');
 const dotenv = require('dotenv');
 const storageFunctions = require('./functions/storageFunctions');
+const audioFunctions = require('./functions/audioFunctions');
+const helperFunctions = require('./functions/helperFunctions');
 
 let robot = {};
 robot.storage = require('node-persist');
 robot.https = require("https");
 
-/**
- * INIT
- */
 
+// INITIALIZE
 const client = new Discord.Client();
 client.commands = new Discord.Collection();
 const commandFiles = fs.readdirSync('./commands').filter(file => file.endsWith('.js'));
@@ -26,15 +26,13 @@ robot.voice = client.voice;
 dotenv.config();
 const BOT_TOKEN = process.env.DISCORD_TOKEN;
 client.login(BOT_TOKEN);
+robot.AUDIO_PATH = process.env.AUDIO_LIBRARY_PATH;
 
-/**
- * LIFECYCLE
- */
 
+// LIFECYCLE
 client.on('message', async message => {
     let serverId = message.channel.guild.id;
     const BOT_PREFIX = await storageFunctions.getPrefixAsync(robot, serverId);
-    robot.prefix = BOT_PREFIX;
     if (!message.content.startsWith(BOT_PREFIX) || message.author.bot) return;
 
     const args = message.content.slice(BOT_PREFIX.length).split(/\s+/);
@@ -47,8 +45,7 @@ client.on('message', async message => {
         args.splice(i,1);
     }
     if (!client.commands.has(command)){
-        message.react('❓')
-        return;
+        return message.react('❓');
     }
 
     try {
@@ -69,27 +66,36 @@ client.once('ready', async () => {
     getConnectedServers();
 });
 
-// client.on('voiceStateUpdate', (newState, oldState) =>{
-//     let newUserChannel = oldState.channelID;
-//     let oldUserChannel = newState.channelID;
-//     let channels = client.voice.connections;
+client.on('voiceStateUpdate', async (oldState, newState) =>{
+    let oldUserChannel = oldState.channelID;
+    let newUserChannel = newState.channelID;
+    let botId = client.user.id;
 
-//     if(newUserChannel && newUserChannel!=oldUserChannel){// user joins
-//         console.log('user joins');
-//     }
-//     else if(!newUserChannel && oldUserChannel){// user leaves
-//         console.log('user leaves');
+    if(newState.member.id == botId) return; //ignore self
 
-//         for(const [id, channel] of channels){
-//             console.log(channel);
-//         }
-//         // if(channels.has())
-//     }
-// })
+    if(newUserChannel && !oldUserChannel){ //user joins, not switches channel
+        await onServerJoin(client, newState);
+    }
+    else if(oldUserChannel && newUserChannel!=oldUserChannel){ //user left channel/server
+        if(newUserChannel){
+            onChannelSwitch(oldState, newState); //user switches channels
+        }
+        else{
+            onServerLeave(oldState); //user leaves server
+        }
+        await leaveChannelCheck(client, oldUserChannel, newState);
+    }
+})
 
-/**
- * FUNCTIONS
- */
+
+// FUNCTIONS
+function playAudio(voiceChannel, args, leaveAfter){
+    if(!robot.audioFiles) robot.audioFiles = audioFunctions.getAudioFiles(robot.AUDIO_PATH);
+    const allAudio = robot.audioFiles;
+    let audio = audioFunctions.selectAudio(allAudio, args);
+    if(audio) audioFunctions.playAudio(robot, voiceChannel, audio, leaveAfter);
+    else console.log(`No audio found for [${args}])`);
+}
 
 function getConnectedServers(){
     let serverNames = [];
@@ -105,4 +111,53 @@ function memberCanExecute(member, command){
         if(member.hasPermission(p)) return true;
     }
     return false;
+}
+
+function onChannelSwitch(oldState, newState){
+    console.log(`${newState.member.user.username} moved from ${oldState.channel.name} to ${newState.channel.name} [${newState.guild.name}]`);
+}
+
+function onServerLeave(oldState){
+    console.log(`${oldState.member.user.username} left ${oldState.channel.name} [${oldState.guild.name}]`);
+}
+
+
+async function leaveChannelCheck(client, oldUserChannel, newState){
+    let botId = client.user.id;
+    let oldChannel = client.channels.cache.get(oldUserChannel);
+    let guild = await client.guilds.fetch(newState.guild.id);
+    let vStatesInOldChannel = guild.voiceStates.cache.filter(c=>c.channelID==oldUserChannel);
+    if(vStatesInOldChannel.has(botId) && vStatesInOldChannel.array().length == 1) oldChannel.leave(); //make bot leave if last in channel
+}
+
+async function onServerJoin(client, newState){
+    console.log(`${newState.member.user.username} joined ${newState.channel.name} [${newState.guild.name}]`);
+
+    // ENSURE VOICECHANNEL EXISTS
+    let voiceChannel = newState.member.voice.channel;
+    if(!voiceChannel) return;
+
+    // CHECK IF JOIN SOUNDS ARE ENABLED ON THE SERVER
+    const serverId = newState.guild.id;
+    let serverData = await storageFunctions.getServerDataAsync(robot, serverId);
+    if(serverData.onjoin){
+
+        // DETERMINE IF BOT SHOULD LEAVE AFTER AUDIO
+        const botId = client.user.id;
+        let botVoiceState = newState.guild.voiceStates.cache.get(botId);
+        const newUserChannel = newState.channelID;
+        let leaveAfter = !botVoiceState || botVoiceState.channelID != newUserChannel;
+
+        // CHECK FOR USER SET SOUND
+        const userId = newState.member.user.id;
+        let userData = await storageFunctions.getServerUserDataAsync(robot, serverId, userId);
+        if(userData.onjoin){
+            await helperFunctions.timeout(1200);
+            playAudio(voiceChannel, userData.onjoin, leaveAfter);
+        }
+        else if(serverData.onjoin != 'on'){
+            await helperFunctions.timeout(1200);
+            playAudio(voiceChannel, serverData.onjoin.split(' '), leaveAfter);
+        }
+    }
 }
