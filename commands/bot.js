@@ -1,3 +1,4 @@
+const helperFunctions = require('../functions/helperFunctions');
 const storageFunctions = require('../functions/storageFunctions');
 
 module.exports = [{
@@ -10,12 +11,12 @@ module.exports = [{
         let newPrefix = args[0];
         if(newPrefix){
             console.log(`Setting ${server.name} prefix to ${newPrefix}`);
-            storageFunctions.setPrefixAsync(robot, server.id, newPrefix);
+            helperFunctions.setPrefixAsync(robot, server.id, newPrefix);
 
             let botMember = await message.guild.members.fetch(botId);
             await botMember.setNickname(`OceanBot (${newPrefix}help)`);
         }
-        let prefix = await storageFunctions.getPrefixAsync(robot, server.id);
+        let prefix = await helperFunctions.getPrefixAsync(robot, server.id);
         message.channel.send(`Command prefix set to ${prefix}`);
     }
 },{

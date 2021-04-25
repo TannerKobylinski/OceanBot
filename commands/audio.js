@@ -1,9 +1,10 @@
 const fs = require('fs');
 const storageFunctions = require('../functions/storageFunctions');
 const audioFunctions = require('../functions/audioFunctions');
+const helperFunctions = require('../functions/helperFunctions');
+const audioReactFunctions = require('../functions/audioReactFunctions');
 
 const MSG_CD = 1000;
-const MESSAGE_CHAR_LIMIT = 1600;
 
 module.exports = [{
     name: 'play',
@@ -116,7 +117,7 @@ module.exports = [{
             for(file of audios){
                 list += `\n${file.fullname}*${file.ext}*`;
             }
-            return messageReplyLong(message, list);
+            return helperFunctions.messageReplyLong(message, list);
         }
         else {
             return message.reply('No matching audio!')
@@ -157,7 +158,31 @@ module.exports = [{
         else return;
         await storageFunctions.setServerUserDataAsync(robot, serverId, userId, userData);
     }
+},{
+    name: 'react',
+    // permissions: ['ADMINISTRATOR'],
+    description: 'Listens and reacts to user audio (use "react stop" to cancel)',
+    async execute(robot, message, args, options) {
+        const user = message.member.user;
+
+        robot.listening = robot.listening || {};
+
+        if(args[0] == "stop"){
+            if(robot.listening[user.id]){
+                delete robot.listening[user.id];
+                return message.reply('stopped listening!');
+            }
+            else return message.reply('not listening!');
+        }
+        robot.listening[user.id] = true;
+
+        message.reply('ready to react!');
+        audioReactFunctions.userListenLoop(robot, message);
+    }
 }];
+
+
+// FUNCTIONS
 
 async function incrementPlayCount(robot, fileName){
     let meta = await storageFunctions.getAudioMetadataAsync(robot);
@@ -166,30 +191,4 @@ async function incrementPlayCount(robot, fileName){
     let plays = meta[fileName].plays || 0;
     meta[fileName].plays = plays+1;
     await storageFunctions.setAudioMetadataAsync(robot, meta);
-}
-
-function messageReplyLong(message, str){
-    if(str.length <= MESSAGE_CHAR_LIMIT) return message.reply(str);
-
-    let firstMessage = true;
-
-    let lines = str.split('\n');
-    let i = 0;
-    let chunk = '';
-    while(i < lines.length){
-        let line = lines[i]+'\n';
-        if(chunk.length + line.length < MESSAGE_CHAR_LIMIT){ //carefully construct chunk
-            chunk += line;
-            i++;
-        }
-        else{ //reply with full chunks
-            if(firstMessage){
-                message.reply(chunk)
-                firstMessage=false;
-            }
-            else message.channel.send(chunk);
-            chunk = '';
-        }
-    }
-    if(chunk.length > 0) message.channel.send(chunk); //send last bit
 }

@@ -27,12 +27,13 @@ dotenv.config();
 const BOT_TOKEN = process.env.DISCORD_TOKEN;
 client.login(BOT_TOKEN);
 robot.AUDIO_PATH = process.env.AUDIO_LIBRARY_PATH;
+robot.speech = require('@google-cloud/speech');
 
 
 // LIFECYCLE
 client.on('message', async message => {
     let serverId = message.channel.guild.id;
-    const BOT_PREFIX = await storageFunctions.getPrefixAsync(robot, serverId);
+    const BOT_PREFIX = await helperFunctions.getPrefixAsync(robot, serverId);
     if (!message.content.startsWith(BOT_PREFIX) || message.author.bot) return;
 
     const args = message.content.slice(BOT_PREFIX.length).split(/\s+/);
@@ -132,6 +133,10 @@ async function leaveChannelCheck(client, oldUserChannel, newState){
 
 async function onServerJoin(client, newState){
     console.log(`${newState.member.user.username} joined ${newState.channel.name} [${newState.guild.name}]`);
+
+    // IGNORE BOT ACCOUNTS
+    const isBot = newState.member.user.bot;
+    if(isBot) return;
 
     // ENSURE VOICECHANNEL EXISTS
     let voiceChannel = newState.member.voice.channel;

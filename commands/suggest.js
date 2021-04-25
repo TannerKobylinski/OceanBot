@@ -1,4 +1,5 @@
 const Discord = require('discord.js');
+const storageFunctions = require('../functions/storageFunctions');
 const STEAM_DOMAIN = 'https://api.steampowered.com';
 const STEAM_OWNED_GAMES_PATH = '/IPlayerService/GetOwnedGames/v0001/';
 const apiFunctions = require('../functions/apiFunctions');
@@ -18,12 +19,11 @@ const MAX_GAME_SUGGESTION_NUM = 5;
 
 module.exports = [{
     name: 'suggest',
-    description: 'Suggest a Steam game',
+    description: 'Suggest a Steam game among the users in a voice call',
     async execute(robot, message, args, options) {
         let STEAM_API_KEY = process.env.STEAM_API_KEY;
         if(!STEAM_API_KEY) {
-            console.error("STEAM_API_KEY not set");
-            return;
+            return console.error("STEAM_API_KEY not set");
         }
         let numOfSuggestions = 1;
         let userChannel = null;
@@ -32,7 +32,7 @@ module.exports = [{
         for(let [channelID, channel] of voiceChannels){
             let tempUsers = [];
             for(let [userID, member] of channel.members){
-                tempUsers.push({discord_id: userID, discord_username: member.user.username});
+                tempUsers.push({discordId: userID, discordUsername: member.user.username});
                 if(userID == message.author.id){
                     userChannel = channel;
                 }
@@ -57,38 +57,44 @@ module.exports = [{
                 numOfSuggestions = Math.max(numOfSuggestions, 0);
             }
         }
-        console.log('Users: ', voiceUsers);
 
-        let configuredUsers = await robot.storage.getItem('USERS_CONFIG');
+        let configuredUsers = await storageFunctions.getAllUsersData(robot);
         let suggestableUsers = [];
         let missingConfigUsers = [];
 
         if(options.includes('configured')){
-            for(let key in configuredUsers) suggestableUsers.push(configuredUsers[key]);
+            for(const [id, userData] of Object.entries(configuredUsers)){
+                if(userData.steamId) suggestableUsers.push(userData);
+            }
         }
         else{
             for(let vUser of voiceUsers){
-                if(vUser.discord_id in configuredUsers) suggestableUsers.push(configuredUsers[vUser.discord_id]);
-                else missingConfigUsers.push(vUser.discord_username);
+                let discId = vUser.discordId;
+                if(configuredUsers[discId] && configuredUsers[discId].steamId) suggestableUsers.push(configuredUsers[discId]);
+                else missingConfigUsers.push(vUser.discordUsername);
             }
         }
-        console.log(suggestableUsers);
 
-        message.channel.send(`Looking at games of *${suggestableUsers.map(usr => {return usr.discord_username}).join('*, *')}*`);
+        message.channel.send(`Looking at games of *${suggestableUsers.map(usr => {return usr.discordUsername}).join('*, *')}*`);
 
         let filteredGames = [];
-        let cacheKey = generateCacheKey(suggestableUsers);
+        let userList = generateUserList(suggestableUsers);
         // Check for cached game list
-        console.log('Looking for ',cacheKey, 'in cache');
-        let cachedGameList = await robot.storage.getItem(cacheKey);
+        console.log('Looking for ',userList, 'in cache');
 
-        if(!cachedGameList){
-            console.log(`Key ${cacheKey} not found in cache`);
+        let cachedLists = await storageFunctions.getGamesListCacheAsync(robot);
+        let gamesList = cachedLists[userList];
+
+        if(!gamesList){
+            console.log(`Key ${userList} not found in cache`);
         }
-        let useCache = !options.includes('no-cache') && cachedGameList && cachedGameList.date_cached == new Date().toLocaleDateString();
+        let useCache = !options.includes('no-cache') && gamesList;
 
         if(useCache) {
-            filteredGames = cachedGameList.games;
+            filteredGames = gamesList.games;
+            if(filteredGames.length == 0){
+                return message.channel.send('No games in common');
+            }
         }
         else {
             if(suggestableUsers.length < 2) {
@@ -99,13 +105,13 @@ module.exports = [{
 
             let usersGameListReceived = [];
             for(let user of suggestableUsers){
-                let path = `${STEAM_DOMAIN}${STEAM_OWNED_GAMES_PATH}?key=${STEAM_API_KEY}&steamid=${user.steam_id}&include_appinfo=true&include_played_free_games=true&format=json`;
+                let path = `${STEAM_DOMAIN}${STEAM_OWNED_GAMES_PATH}?key=${STEAM_API_KEY}&steamid=${user.steamId}&include_appinfo=true&include_played_free_games=true&format=json`;
                 try {
                     var response = await apiFunctions.getAsync(robot, path, {});
                 }
                 catch (error) {
                     console.error(error);
-                    console.error(`Unable to get games for Steam ID: ${user.steam_id} - ${user.discord_username}`);
+                    console.error(`Unable to get games for Steam ID: ${user.steamId} - ${user.discordUsername}`);
                     continue;
                 }
                 user.game_count = response.response.game_count;
@@ -119,18 +125,22 @@ module.exports = [{
 
             let gameSuggestions = gameCompare(usersGameListReceived);
             console.log(gameSuggestions.length, 'games in common');
-
-            message.channel.send(`Getting game details from steam for ${gameSuggestions.length} games`);
-
-            let detailedGames = await getGamesDetails(robot, gameSuggestions);
-            filteredGames = filterGamesCategory(detailedGames);
+            if(gameSuggestions.length == 0){
+                return message.channel.send('No games in common');
+            }
+            else {
+                message.channel.send(`Getting game details from steam for ${gameSuggestions.length} games`);
+                let detailedGames = await getGamesDetails(robot, gameSuggestions);
+                filteredGames = filterGamesCategory(detailedGames);
+            }
 
             //Cache game list
             let setCached = {
                 games: filteredGames,
-                date_cached: `${new Date().toLocaleDateString()}`
+                date: `${new Date().toLocaleDateString()}`
             }
-            await robot.storage.setItem(cacheKey, setCached);
+            cachedLists[userList] = setCached;
+            await storageFunctions.setGamesListCacheAsync(robot, cachedLists);
         }
         if(suggestAll){
             message.channel.send(`Listing all ${filteredGames.length} games in common`);
@@ -178,12 +188,12 @@ function sleep(ms) {
     });
 }
 
-function generateCacheKey(users){
+function generateUserList(users){
     users.sort((a,b) => {
-        return b.steam_id - a.steam_id;
+        return b.steamId - a.steamId;
     });
-    let ids = users.map(user => {return user.steam_id})
-    return `GAME_LIST_${ids.join(`-`)}`;
+    let ids = users.map(user => {return user.steamId})
+    return `${ids.join(`-`)}`;
 }
 
 function filterGamesCategory(gameList){

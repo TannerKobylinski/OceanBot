@@ -1,3 +1,4 @@
+const helperFunctions = require('../functions/helperFunctions');
 const storageFunctions = require('../functions/storageFunctions');
 
 module.exports = [{
@@ -7,7 +8,7 @@ module.exports = [{
         let serverId = message.channel.guild.id;
         let list = '**Bot Commands**';
         robot.commands.sort((a,b) => a.name.localeCompare(b.name));
-        const BOT_PREFIX = await storageFunctions.getPrefixAsync(robot, serverId);
+        const BOT_PREFIX = await helperFunctions.getPrefixAsync(robot, serverId);
         for(let cmd of robot.commands){
             list += `\n${formatCommand(BOT_PREFIX, cmd)}`;
         }

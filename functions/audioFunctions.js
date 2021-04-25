@@ -1,5 +1,6 @@
 const fs = require("fs");
 const path = require("path");
+
 const AUDIO_EXT_REGEX = /\.wav|\.mp3$/i;
 const LONG_AUDIO_BYTES_THRESHOLD = 2000 * 1024; // 2kB
 
@@ -30,7 +31,7 @@ module.exports = {
         return results[index]; // TODO: enhance audio selection
     },
 
-    audioMatch(audio, args){
+    audioMatch(audio, args){ //check if audio object matches phrases
         for(let a of args){
             let options = a.split(',');
             let matched = false;
@@ -98,24 +99,26 @@ module.exports = {
         return arrayOfFiles;
     },
 
-    downSampleStereoToMono: function (file) { //TODO: improve downsample strategy (choosing left may not be best)
-        try {
-            // read stereo audio file into signed 16 array
-            const data = new Int16Array(fs.readFileSync(file))
+    // downSampleStereoToMono: function (path) { //TODO: improve downsample strategy (choosing left may not be best)
+    //     console.log('downsampling ', path);
+    //     try {
+    //         // read stereo audio file into signed 16 array
+    //         let file = fs.readFileSync(path);
+    //         const data = new Int16Array(file);
 
-            // create new array for the mono audio data
-            const ndata = new Int16Array(data.length/2)
+    //         // create new array for the mono audio data
+    //         const ndata = new Int16Array(data.length/2);
 
-            // copy left audio data (skip the right part)
-            for (let i = 0, j = 0; i < data.length; i+=4) {
-                ndata[j++] = data[i]
-                ndata[j++] = data[i+1]
-            }
+    //         // copy left audio data (skip the right part)
+    //         for (let i=0, j=0; i<data.length; i+=4) {
+    //             ndata[j++] = data[i];
+    //             ndata[j++] = data[i+1];
+    //         }
 
-            // save the mono audio file
-            fs.writeFileSync(file, Buffer.from(ndata), 'binary')
-        } catch (e) {
-            console.log(e)
-        }
-    }
+    //         // save the mono audio file
+    //         fs.writeFileSync(path, Buffer.from(ndata), 'binary');
+    //     } catch (e) {
+    //         console.log(e);
+    //     }
+    // }
 }
