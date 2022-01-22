@@ -8,7 +8,7 @@ module.exports = [{
         let url = `https://v2.jokeapi.dev/joke/Any?blacklistFlags=racist`;
         if(args.length>0) url += `&contains=${args.join('%20')}`;
         try {
-            var response = await apiFunctions.getAsync(robot, url, {});
+            var response = await apiFunctions.getAsync(robot, url, {}, true);
             if(response.error) throw new Error(response.error);
             if(response.type == 'twopart') await sendJokeTwoPart(message, response);
             else sendJokeSingle(message, response);

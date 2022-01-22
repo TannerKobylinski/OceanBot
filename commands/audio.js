@@ -1,4 +1,3 @@
-const fs = require('fs');
 const storageFunctions = require('../functions/storageFunctions');
 const audioFunctions = require('../functions/audioFunctions');
 const helperFunctions = require('../functions/helperFunctions');
@@ -114,8 +113,22 @@ module.exports = [{
         }
         if(audios.length > 0){
             let list = '**Audio Files:**';
-            for(file of audios){
-                list += `\n${file.fullname}*${file.ext}*`;
+            if(args.length > 0){
+                for(file of audios){
+                    list += `\n${file.fullname}`;
+                }
+            }
+            else {
+                let lastFolder = '';
+                for(file of audios){
+                    if(file.inDirectory) {
+                        let folderName = file.fullname.split('/')[0];
+                        if(folderName === lastFolder) continue;
+                        lastFolder = folderName;
+                        list += `\n**/${folderName}/**`;
+                    }
+                    else list += `\n*${file.fullname}*`;
+                }
             }
             return helperFunctions.messageReplyLong(message, list);
         }

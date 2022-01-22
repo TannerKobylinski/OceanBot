@@ -64,13 +64,16 @@ module.exports = {
 
     getAudioFiles: function(path){
         let audios = this.getAudioFilesRecursive(path, null, path.length);
-        // audios.sort((a,b) => {
-        //     return a.name.localeCompare(b.name);
-        // });
+        //move nested audio to top
+        audios = audios.sort((a,b) => {
+            let aSortName = `${a.inDirectory? " ":""}${a.fullname}`;
+            let bSortName = `${b.inDirectory? " ":""}${b.fullname}`;
+            return aSortName.localeCompare(bSortName);
+        });
         return audios;
     },
 
-    getAudioFilesRecursive: function(dirPath, arrayOfFiles, libraryPathLength){
+    getAudioFilesRecursive: function(dirPath, arrayOfFiles, libraryPathLength, recursive){
         files = fs.readdirSync(dirPath);
 
         arrayOfFiles = arrayOfFiles || [];
@@ -78,7 +81,7 @@ module.exports = {
         files.forEach((file) =>{
             let newPath = dirPath + "/" + file;
             if (fs.statSync(newPath).isDirectory()) {
-                arrayOfFiles = this.getAudioFilesRecursive(newPath, arrayOfFiles, libraryPathLength);
+                arrayOfFiles = this.getAudioFilesRecursive(newPath, arrayOfFiles, libraryPathLength, true);
             }
             else {
                 let ext = path.extname(file);
@@ -88,9 +91,10 @@ module.exports = {
                         name: fileName,
                         ext: ext,
                         path: newPath.replace(/\\/g, "/"),
-                        size: fs.statSync(newPath).size
+                        size: fs.statSync(newPath).size,
+                        inDirectory: recursive
                     };
-                    fileObj.fullname = fileObj.path.substr(libraryPathLength+1, fileObj.path.length-libraryPathLength-1-fileObj.ext.length)
+                    fileObj.fullname = fileObj.path.substr(libraryPathLength+1, fileObj.path.length-libraryPathLength-1-fileObj.ext.length);
                     arrayOfFiles.push(fileObj);
                 }
                 else return arrayOfFiles;

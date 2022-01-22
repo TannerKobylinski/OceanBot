@@ -1,5 +1,6 @@
 const fs = require('fs');
 const Discord = require('discord.js');
+// const socketIo = require("socket.io");
 const dotenv = require('dotenv');
 const storageFunctions = require('./functions/storageFunctions');
 const audioFunctions = require('./functions/audioFunctions');
@@ -7,7 +8,9 @@ const helperFunctions = require('./functions/helperFunctions');
 
 let robot = {};
 robot.storage = require('node-persist');
-robot.https = require("https");
+robot.https = require('https');
+robot.axios = require('axios');
+// robot.io = socketIo()
 
 
 // INITIALIZE
@@ -52,7 +55,9 @@ client.on('message', async message => {
     try {
         let execCommand = client.commands.get(command);
         if(memberCanExecute(message.member, execCommand)){
-            execCommand.execute(robot, message, args, options);
+            execCommand.execute(robot, message, args, options).catch((error) => {
+                console.error(error);
+            });
         }
         else {
             console.log(`User ${message.member.name} lacks ${execCommand.permissions.join(' or ')} permissions!`);

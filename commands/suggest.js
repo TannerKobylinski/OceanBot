@@ -107,7 +107,7 @@ module.exports = [{
             for(let user of suggestableUsers){
                 let path = `${STEAM_DOMAIN}${STEAM_OWNED_GAMES_PATH}?key=${STEAM_API_KEY}&steamid=${user.steamId}&include_appinfo=true&include_played_free_games=true&format=json`;
                 try {
-                    var response = await apiFunctions.getAsync(robot, path, {});
+                    var response = await apiFunctions.getAsync(robot, path);
                 }
                 catch (error) {
                     console.error(error);
@@ -220,7 +220,7 @@ async function getGamesDetails(robot, gameList){
         let appid = game.appid;
         let url = `https://store.steampowered.com/api/appdetails?appids=${appid}`;
         try {
-            var response = await apiFunctions.getAsync(robot, url, {});
+            var response = await apiFunctions.getAsync(robot, url);
             if(!response || !response[appid].success) throw new Error(`Steam API call failed for ${game.name}`);
         }
         catch (error) {

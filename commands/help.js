@@ -1,5 +1,4 @@
 const helperFunctions = require('../functions/helperFunctions');
-const storageFunctions = require('../functions/storageFunctions');
 
 module.exports = [{
     name: 'help',

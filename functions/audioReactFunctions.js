@@ -1,4 +1,5 @@
 const fs = require('fs');
+const stringSimilarity = require("string-similarity");
 const audioFunctions = require('./audioFunctions');
 
 const encoding = 'LINEAR16';
@@ -88,5 +89,61 @@ module.exports = {
         console.log(bestAudio.matchedWords);
         if(bestAudio.score > SCORE_THRESHOLD) return bestAudio;
         return null;
+    },
+
+    transcriptionToAudio2: function (audioObjects, transcription){
+        allAudio = audioObjects.slice(); //copy by value
+        transcription = transcription.toLowerCase().replace(/['",!?.]/g, ''); //remove punctuation bc speech2text api sucks
+        let transcriptionWords = transcription.split(/\s+/);
+
+        console.log(transcription);
+
+        for(let a of allAudio){
+            a.score = 0;
+            a.matchedWords = [];
+
+            let audioFileWords = a.fullname.split(/[^\w]/);
+            a.score = similarityScore(audioFileWords, transcriptionWords);
+        }
+        allAudio.sort((a,b) => b.score - a.score);
+
+        const SCORE_THRESHOLD = 5;
+        let bestAudio = allAudio[0];
+        console.log(`Best audio is ${bestAudio.fullname} with a score of ${bestAudio.score}`);
+        console.log(bestAudio.matchedWords);
+        if(bestAudio.score > SCORE_THRESHOLD) return bestAudio;
+        return null;
+    },
+
+    similarityScore: function(a1, a2){ //strings as arrays of words - checking a2 against differing a1s
+        let score = 0;
+        const maxScore = 0.0 + a1.concat().length;
+        // let a2Sorted = a2.slice().sort((a,b) => b.length - a.length);
+
+        for(let w1 of a1){
+            let bestScore = 0;
+            for(let w2 of a2){
+                let simScore = stringSimilarity.compareTwoStrings(w1, w2);
+                let wordScore = simScore*w1.length;
+            }
+        }
+
+
+        // for(let w of words){
+        //     w = w.toLowerCase();
+        //     let matchOn = a.fullname.split(/[\s\-\/]/);
+        //     if(matchOn.includes(w)){
+        //         if(!a.matchedWords.includes(w)){
+        //             a.matchedWords.push(w);
+        //             score += w.length;
+        //         }
+        //     }
+        // }
+        return score / maxScore;
+    },
+
+    stringMatch: function(s1, s2){
+
+
     }
 }
