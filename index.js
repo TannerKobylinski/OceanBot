@@ -5,6 +5,7 @@ const dotenv = require('dotenv');
 const storageFunctions = require('./functions/storageFunctions');
 const audioFunctions = require('./functions/audioFunctions');
 const helperFunctions = require('./functions/helperFunctions');
+const reactFunctions = require('./functions/reactFunctions');
 
 let robot = {};
 robot.storage = require('node-persist');
@@ -37,7 +38,22 @@ robot.speech = require('@google-cloud/speech');
 client.on('message', async message => {
     let serverId = message.channel.guild.id;
     const BOT_PREFIX = await helperFunctions.getPrefixAsync(robot, serverId);
-    if (!message.content.startsWith(BOT_PREFIX) || message.author.bot) return;
+
+    if (message.author.bot) return; //ignore bots
+    if (!message.content.startsWith(BOT_PREFIX) ) { //non-command messages
+
+
+        if(true || message.author.id === '163119583304089600') {
+            const letters = reactFunctions.getReactableLetters(message.content);
+            if(letters && letters.length <= 20) {
+                console.info(`Reacting to ${message.content}`);
+                await reactFunctions.reactToMessageWithLetters(message, letters);
+            }
+        }
+
+        return;
+    }
+    if (message.content.length <= BOT_PREFIX.length) return; // ignore just the prefix itself
 
     const args = message.content.slice(BOT_PREFIX.length).split(/\s+/);
     const command = args.shift().toLowerCase();
