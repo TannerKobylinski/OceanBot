@@ -5,7 +5,6 @@ const dotenv = require('dotenv');
 const storageFunctions = require('./functions/storageFunctions');
 const audioFunctions = require('./functions/audioFunctions');
 const helperFunctions = require('./functions/helperFunctions');
-const reactFunctions = require('./functions/reactFunctions');
 
 let robot = {};
 robot.storage = require('node-persist');
@@ -26,7 +25,6 @@ for (const file of commandFiles) {
 }
 robot.commands = client.commands;
 robot.voice = client.voice;
-
 dotenv.config();
 const BOT_TOKEN = process.env.DISCORD_TOKEN;
 client.login(BOT_TOKEN);
@@ -41,16 +39,6 @@ client.on('message', async message => {
 
     if (message.author.bot) return; //ignore bots
     if (!message.content.startsWith(BOT_PREFIX) ) { //non-command messages
-
-
-        if(true || message.author.id === '163119583304089600') {
-            const letters = reactFunctions.getReactableLetters(message.content);
-            if(letters && letters.length <= 20) {
-                console.info(`Reacting to ${message.content}`);
-                await reactFunctions.reactToMessageWithLetters(message, letters);
-            }
-        }
-
         return;
     }
     if (message.content.length <= BOT_PREFIX.length) return; // ignore just the prefix itself

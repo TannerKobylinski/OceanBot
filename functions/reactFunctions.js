@@ -1,5 +1,8 @@
+const emoji = require('node-emoji');
+
 
 function getReactableLetters(message) {
+    if(!message.match(/^[A-Za-z\s]+$/g)) return null;
     message = message.toLowerCase();
     const regex = /([a-z])/g;
     const letters = [...message.matchAll(regex)].map((match) => match[0]);
@@ -20,6 +23,11 @@ async function reactToMessageWithLetters(message, letters) {
     }
 }
 
+function reactWithRandomEmoji(message) {
+    const randomEmoji = emoji.random().emoji;
+    message.react(randomEmoji);
+}
+
 function getEmojiFromLetter(letter) {
     const REGIONAL_INDICATOR_A_CODE_POINT = 127462;
     letter = letter.toLowerCase();
@@ -29,5 +37,6 @@ function getEmojiFromLetter(letter) {
 
 module.exports = {
     getReactableLetters,
-    reactToMessageWithLetters
+    reactToMessageWithLetters,
+    reactWithRandomEmoji
 }
