@@ -24,8 +24,9 @@ module.exports = [{
         }
         else {
             const reactLetters = args.join('');
-            const letters = reactFunctions.getReactableLetters(reactLetters);
-            if(letters && letters.length <= 20) {
+            let letters = reactFunctions.getReactableLetters(reactLetters, true);
+            if(letters) {
+                if(letters.length > 20) letters = letters.slice(0, 20);
                 console.info(`${message.author.username} reacting to ${messageToReactTo.content}`);
                 await reactFunctions.reactToMessageWithLetters(messageToReactTo, letters);
             }

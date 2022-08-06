@@ -1,14 +1,14 @@
 const emoji = require('node-emoji');
 
 
-function getReactableLetters(message) {
+function getReactableLetters(message, allowDuplicates) {
     if(!message.match(/^[A-Za-z\s]+$/g)) return null;
     message = message.toLowerCase();
     const regex = /([a-z])/g;
     const letters = [...message.matchAll(regex)].map((match) => match[0]);
-    const duplicates = letters.filter((letter, index) => letters.indexOf(letter) !== index);
-    if (duplicates.length > 0) return null;
-    return letters;
+    const uniques = letters.filter((letter, index) => letters.indexOf(letter) === index);
+    if(!allowDuplicates && uniques.length !== letters.length) return null;
+    return uniques;
 }
 
 async function reactToMessageWithLetters(message, letters) {
