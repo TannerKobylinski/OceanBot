@@ -1,9 +1,13 @@
+const ytdl = require("ytdl-core");
 const storageFunctions = require('../functions/storageFunctions');
 const audioFunctions = require('../functions/audioFunctions');
 const helperFunctions = require('../functions/helperFunctions');
 const audioReactFunctions = require('../functions/audioReactFunctions');
 
 const MSG_CD = 1000;
+const MAX_AUDIO_QUEUE_LENGTH = 25;
+const TOP_AUDIO_PLAYS_LENGTH = 15;
+const YOUTUBE_REGEX = /^((?:https?:)?\/\/)?((?:www|m)\.)?((?:youtube\.com|youtu.be))(\/(?:[\w\-]+\?v=|embed\/|v\/)?)([\w\-]+)(\S+)?$/;
 
 module.exports = [{
     name: 'play',
@@ -17,58 +21,98 @@ module.exports = [{
         const permissions = voiceChannel.permissionsFor(message.client.user);
         if (!permissions.has("CONNECT") || !permissions.has("SPEAK")) return message.channel.send("I need the permissions to join and speak in your voice channel!");
 
-        // STORE LAST ARGS FOR RETRY COMMAND
-        let serverData = await storageFunctions.getServerDataAsync(robot, serverId);
-        if(args.length > 0){
-            serverData.lastPlayArgs = args;
-            await storageFunctions.setServerDataAsync(robot, serverId, serverData);
+        // CHECK FOR YOUTUBE LINK
+        const isLinkedAudio = args[0] && args[0].match(YOUTUBE_REGEX);
+
+        let audio;
+
+        // HANDLE LOCAL AUDIO REQUEST
+        if(!isLinkedAudio){
+
+            // STORE LAST ARGS FOR RETRY COMMAND
+            let serverData = await storageFunctions.getServerDataAsync(robot, serverId);
+            if(args.length > 0){
+                serverData.lastPlayArgs = args;
+                await storageFunctions.setServerDataAsync(robot, serverId, serverData);
+            }
+
+            // GET ALL AVAILABLE AUDIO
+            if(!robot.audioFiles) robot.audioFiles = audioFunctions.getAudioFiles(robot.AUDIO_PATH);
+            const allAudio = robot.audioFiles;
+
+            // SELECT THE AUDIO
+            console.log(`${message.member.user.username} wants to play ${args.length>0? args.join(' ') : 'RANDOM'}`);
+            audio = audioFunctions.selectAudio(allAudio, args);
+            if(!audio) return message.reply("Audio not found!");
+
+            // DON'T LET QUEUE GET TOO BIG
+            if(robot.audioQueues[serverId] && robot.audioQueues[serverId].length >= MAX_AUDIO_QUEUE_LENGTH) return message.reply('Audio queue limit reached!');
+
+            // PLAY THE AUDIO
+            if(robot.audioQueues[serverId] && robot.audioQueues[serverId].length > 0) message.reply(`queueing *${audio.fullname}${audio.ext}*`);
+            await audioFunctions.incrementPlayCount(robot, audio.name);
+            audioFunctions.queueAudio(robot, voiceChannel, audio, message);
         }
-
-        // GET ALL AVAILABLE AUDIO
-        if(!robot.audioFiles) robot.audioFiles = audioFunctions.getAudioFiles(robot.AUDIO_PATH);
-        const allAudio = robot.audioFiles;
-
-        // SELECT THE AUDIO
-        console.log(`${message.member.user.username} wants to play ${args.length>0? args.join(' ') : 'RANDOM'}`);
-        let audio = audioFunctions.selectAudio(allAudio, args);
-        if(!audio) return message.reply("Audio not found!");
-
-        // CHECK COMMAND COOLDOWN
-        if(!robot.playCoolDown){
-            robot.playCoolDown = true;
-            setTimeout((robot)=>{
-                robot.playCoolDown = false;
-            }, MSG_CD, robot);
+        else {
+            try {
+                const stream = ytdl(args[0], { filter: 'audioonly' });
+                stream.on('info', (info) => {
+                    if(info && info.videoDetails && info.videoDetails.title) {
+                        audio = audioFunctions.getBaseAudioObj(args[0], isLinkedAudio);
+                        audio.url = info.videoDetails.video_url;
+                        audio.name = info.videoDetails.title;
+                        audio.length = info.videoDetails.lengthSeconds;
+                        audio.fullname = audio.name;
+                        const minutes = Math.floor(audio.length / 60);
+                        const hours = audio.length - minutes * 60;
+                        if(robot.audioQueues[serverId] && robot.audioQueues[serverId].length > 0) message.reply(`queueing *${audio.name}${audio.ext}* (${minutes}:${hours})`);
+                        audioFunctions.queueAudio(robot, voiceChannel, audio, message);
+                        return;
+                    }
+                });
+                stream.on('error', (err) => {
+                    console.error(err);
+                    message.reply(`trouble playing <${args[0]}>`);
+                })
+            }
+            catch(err){
+                console.error(err);
+                message.reply(`trouble playing <${args[0]}>`);
+            }
         }
-        else return;
-
-        // PLAY THE AUDIO
-        message.reply(`playing *${audio.fullname}${audio.ext}*`);
-        serverData.lastAudio = audio;
-        await storageFunctions.setServerDataAsync(robot, serverId, serverData);
-        await incrementPlayCount(robot, audio.name);
-        audioFunctions.playAudio(robot, voiceChannel, audio);
     }
 },{
     name: 'pause',
     description: 'Pause audio playback',
     async execute(robot, message, args, options) {
-        if(!robot.dispatcher) return message.reply("No audio playing!");
-        return robot.dispatcher.pause(true);
+        const guild = message.channel.guild.id;
+        if(!robot.dispatchers[guild]) return message.reply("No audio playing!");
+        return robot.dispatchers[guild].pause(true);
     }
 },{
     name: 'unpause',
     description: 'Unpause audio playback',
     async execute(robot, message, args, options) {
-        if(!robot.dispatcher) return message.reply("No audio playing!");
-        return robot.dispatcher.resume();
+        const guild = message.channel.guild.id;
+        if(!robot.dispatchers[guild]) return message.reply("No audio playing!");
+        return robot.dispatchers[guild].resume();
     }
 },{
     name: 'stop',
     description: 'Stop audio playback',
     async execute(robot, message, args, options) {
-        if(!robot.dispatcher) return message.reply("No audio playing!");
-        return robot.dispatcher.destroy();
+        const guild = message.channel.guild.id;
+        if(!robot.dispatchers[guild]) return message.reply("No audio playing!");
+        robot.audioQueues[guild] = [];
+        return robot.dispatchers[guild].destroy();
+    }
+},{
+    name: 'skip',
+    description: 'Skip to next audio',
+    async execute(robot, message, args, options) {
+        const guild = message.channel.guild.id;
+        if(!robot.dispatchers[guild]) return message.reply("No audio playing!");
+        robot.dispatchers[guild].emit('finish');
     }
 },{
     name: 'replay',
@@ -81,13 +125,11 @@ module.exports = [{
         if (!audio){
             if(!robot.audioFiles) robot.audioFiles = audioFunctions.getAudioFiles(robot.AUDIO_PATH);
             audio = audioFunctions.selectAudio(robot.audioFiles);
-            serverData.lastAudio = audio;
-            await storageFunctions.setServerDataAsync(robot, message.channel.guild.id, hisserverDatatory);
             message.reply("No audio to replay! Picking randomly!");
         }
         await incrementPlayCount(robot, audio.name);
-        message.reply(`playing *${audio.fullname}${audio.ext}*`);
-        audioFunctions.playAudio(robot, voiceChannel, audio);
+        message.reply(`queueing *${audio.fullname}${audio.ext}*`);
+        audioFunctions.queueAudio(robot, voiceChannel, audio, message);
     }
 },{
     name: 'retry',
@@ -138,7 +180,7 @@ module.exports = [{
     }
 },{
     name: 'index',
-    permissions: ['ADMINISTRATOR'],
+    permissions: ['DEVELOPER'],
     description: 'Index all audio files, update list',
     async execute(robot, message, args, options) {
         robot.audioFiles = audioFunctions.getAudioFiles(robot.AUDIO_PATH);
@@ -173,7 +215,7 @@ module.exports = [{
     }
 },{
     name: 'react',
-    // permissions: ['ADMINISTRATOR'],
+    permissions: ['DEVELOPER'],
     description: 'Listens and reacts to user audio (use "react stop" to cancel)',
     async execute(robot, message, args, options) {
         const user = message.member.user;
@@ -192,16 +234,47 @@ module.exports = [{
         message.reply('ready to react!');
         audioReactFunctions.userListenLoop(robot, message);
     }
+},{
+    name: 'tts',
+    description: 'Text to speech',
+    async execute(robot, message, args, options) {
+
+        // CHECK FOR PERMISSIONS
+        const voiceChannel = message.member.voice.channel;
+        if (!voiceChannel) return message.reply("You must be in a voice channel!");
+        const permissions = voiceChannel.permissionsFor(message.client.user);
+        if (!permissions.has("CONNECT") || !permissions.has("SPEAK")) return message.channel.send("I need the permissions to join and speak in your voice channel!");
+
+        const text = args.join(' ');
+
+        message.reply('queuing TTS');
+        audioFunctions.queueTTS(robot, message, voiceChannel, text);
+    }
+},{
+    name: '112',
+    description: 'Play the most inspirational video of all time',
+    async execute(robot, message, args, options) {
+        const playExec = module.exports.find(cmd => cmd.name == 'play');
+        if(!playExec) return;
+        args = ['https://www.youtube.com/watch?v=oYmqJl4MoNI'];
+        playExec.execute(robot, message, args, options);
+    }
+},{
+    name: 'numplays',
+    description: 'Show the top played audios',
+    async execute(robot, message, args, options) {
+        const metadata = await storageFunctions.getAudioMetadataAsync(robot);
+        const kvs = Object.entries(metadata);
+        if(!metadata || !kvs || kvs.length < 1) message.reply('Issue gathering metadata!');
+
+        kvs.sort((a,b) => b[1].plays - a[1].plays);
+        let size = Math.min(TOP_AUDIO_PLAYS_LENGTH, kvs.length);
+        let list = `Top ${size} audios`;
+        for(let i=0; i<size; i++){
+            let audio = kvs[i];
+            list += `\n${i==0?'>>> ':''}*${audio[0]}* - [${audio[1].plays} plays]`;
+        }
+        message.reply(list);
+    }
 }];
 
-
-// FUNCTIONS
-
-async function incrementPlayCount(robot, fileName){
-    let meta = await storageFunctions.getAudioMetadataAsync(robot);
-    if(!meta[fileName]) meta[fileName] = {};
-
-    let plays = meta[fileName].plays || 0;
-    meta[fileName].plays = plays+1;
-    await storageFunctions.setAudioMetadataAsync(robot, meta);
-}

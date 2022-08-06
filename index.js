@@ -2,8 +2,10 @@ const fs = require('fs');
 const Discord = require('discord.js');
 // const socketIo = require("socket.io");
 const dotenv = require('dotenv');
+require('log-timestamp');
 const storageFunctions = require('./functions/storageFunctions');
 const audioFunctions = require('./functions/audioFunctions');
+const twitterFunctions = require('./functions/twitterFunctions');
 const helperFunctions = require('./functions/helperFunctions');
 
 let robot = {};
@@ -14,6 +16,9 @@ robot.axios = require('axios');
 
 
 // INITIALIZE
+robot.audioQueues = {};
+robot.dispatchers = {};
+robot.directory = __dirname;
 const client = new Discord.Client();
 client.commands = new Discord.Collection();
 const commandFiles = fs.readdirSync('./commands').filter(file => file.endsWith('.js'));
@@ -25,6 +30,7 @@ for (const file of commandFiles) {
 }
 robot.commands = client.commands;
 robot.voice = client.voice;
+robot.client = client;
 dotenv.config();
 const BOT_TOKEN = process.env.DISCORD_TOKEN;
 client.login(BOT_TOKEN);
@@ -37,7 +43,7 @@ client.on('message', async message => {
     let serverId = message.channel.guild.id;
     const BOT_PREFIX = await helperFunctions.getPrefixAsync(robot, serverId);
 
-    if (message.author.bot) return; //ignore bots
+    // if (message.author.bot) return; //ignore bots
     if (!message.content.startsWith(BOT_PREFIX) ) { //non-command messages
         return;
     }
@@ -74,6 +80,9 @@ client.on('message', async message => {
 client.once('ready', async () => {
     await robot.storage.init();
     getConnectedServers();
+    // if(twitterFunctions.areParrots(robot)){//open up twitter stream
+    //     robot.twitterStream = twitterFunctions.openStream(robot);
+    // }
 });
 
 client.on('voiceStateUpdate', async (oldState, newState) =>{
@@ -103,7 +112,7 @@ function playAudio(voiceChannel, args, leaveAfter){
     if(!robot.audioFiles) robot.audioFiles = audioFunctions.getAudioFiles(robot.AUDIO_PATH);
     const allAudio = robot.audioFiles;
     let audio = audioFunctions.selectAudio(allAudio, args);
-    if(audio) audioFunctions.playAudio(robot, voiceChannel, audio, leaveAfter);
+    if(audio) audioFunctions.queueAudio(robot, voiceChannel, audio, null, leaveAfter);
     else console.log(`No audio found for [${args}])`);
 }
 
@@ -117,6 +126,7 @@ function getConnectedServers(){
 
 function memberCanExecute(member, command){
     if(!command.permissions) return true;
+    if(command.permissions.includes('DEVELOPER') && member.id == 163119583304089600) return true;
     for(let p of command.permissions){
         if(member.hasPermission(p)) return true;
     }
@@ -137,7 +147,10 @@ async function leaveChannelCheck(client, oldUserChannel, newState){
     let oldChannel = client.channels.cache.get(oldUserChannel);
     let guild = await client.guilds.fetch(newState.guild.id);
     let vStatesInOldChannel = guild.voiceStates.cache.filter(c=>c.channelID==oldUserChannel);
-    if(vStatesInOldChannel.has(botId) && vStatesInOldChannel.array().length == 1) oldChannel.leave(); //make bot leave if last in channel
+    if(vStatesInOldChannel.has(botId) && vStatesInOldChannel.array().length == 1) {
+        oldChannel.leave(); //make bot leave if last in channel
+        robot.audioQueues[oldChannel.guild.id] = []; //clear any pending audio
+    }
 }
 
 async function onServerJoin(client, newState){
@@ -166,10 +179,12 @@ async function onServerJoin(client, newState){
         const userId = newState.member.user.id;
         let userData = await storageFunctions.getServerUserDataAsync(robot, serverId, userId);
         if(userData.onjoin){
+            if(robot.audioQueues[serverId] && robot.audioQueues[serverId].length > 0) return; //
             await helperFunctions.timeout(1200);
             playAudio(voiceChannel, userData.onjoin, leaveAfter);
         }
         else if(serverData.onjoin != 'on'){
+            if(robot.audioQueues[serverId] && robot.audioQueues[serverId].length > 0) return;
             await helperFunctions.timeout(1200);
             playAudio(voiceChannel, serverData.onjoin.split(' '), leaveAfter);
         }

@@ -1,22 +1,91 @@
 const fs = require("fs");
 const path = require("path");
+const ytdl = require("ytdl-core");
+const say = require('say')
+const storageFunctions = require('../functions/storageFunctions');
 
 const AUDIO_EXT_REGEX = /\.wav|\.mp3$/i;
 const LONG_AUDIO_BYTES_THRESHOLD = 2000 * 1024; // 2kB
+const YOUTUBE_STREAM_OPTIONS = { seek: 0, volume: .35 };
 
 module.exports = {
+    getBaseAudioObj: function(name, isLinked){
+        return {
+            name,
+            ext: '',
+            path: isLinked? name : null,
+            size: 0,
+            inDirectory: false,
+            fullname: isLinked? name : null,
+            length: 0,
+            isLinked
+        }
+    },
 
-    playAudio: function(robot, voiceChannel, audio, leaveAfter){
-        return voiceChannel.join().then(connection => {
-            if(robot.dispatcher) robot.dispatcher.destroy();
-            const dispatcher = connection.play(`${audio.path}`);
-            robot.dispatcher = dispatcher;
+    queueAudio: function(robot, voiceChannel, audio, message, leaveAfter){
+        console.log(`queueing audio ${audio.name}`);
+        const audioMeta = {
+            channel: voiceChannel,
+            message,
+            audio,
+            leaveAfter,
+        };
+        const guild = voiceChannel.guild.id;
+        if(!robot.audioQueues[guild]) robot.audioQueues[guild] = [];
+        const playAudioAfter = robot.audioQueues[guild].length == 0;
+        robot.audioQueues[guild].push(audioMeta);
+        console.log(`Queue: ${robot.audioQueues[guild].length}, ${JSON.stringify(robot.audioQueues[guild])}`);
+        if(playAudioAfter) this.playAudio(robot, guild);
+    },
+
+    playAudio: async function(robot, guild){
+        console.log(`playAudio with ${robot.audioQueues[guild].length} audios to play`);
+        if(!robot.audioQueues[guild] || robot.audioQueues[guild].length == 0) return;
+        let audioItem = robot.audioQueues[guild][0];
+        console.log(`Popping ${audioItem.audio.name}`);
+
+        // STORE LAST PLAYED
+        if(!audioItem.audio.isTTS) {
+            const serverData = await storageFunctions.getServerDataAsync(robot, audioItem.channel.guild.id,);
+            serverData.lastAudio = audioItem.audio;
+            await storageFunctions.setServerDataAsync(robot, audioItem.channel.guild.id, serverData);
+        }
+
+        return audioItem.channel.join().then(connection => {
+
+            if(audioItem.message) audioItem.message.reply(`playing *${audioItem.audio.fullname}${audioItem.audio.ext}*`);
+
+            let dispatcher;
+            if(audioItem.audio.isLinked) {
+                const stream = ytdl(audioItem.audio.url, { filter: 'audioonly' });
+                dispatcher = connection.play(stream, YOUTUBE_STREAM_OPTIONS);
+            }
+            else {
+                dispatcher = connection.play(`${audioItem.audio.path}`);
+            }
+            robot.dispatchers[guild] = dispatcher;
+
             dispatcher.on('start', () => {
-                console.log(`Playing audio ${audio.name}`);
+                console.log(`Playing audio "${audioItem.audio.fullname}"`);
+            });
+            dispatcher.on('end', (end) => {
+                console.log(end);
+            });
+            dispatcher.on('error', (error) => {
+                console.error(error);
+                audioItem.message.reply(`error playing *${audioItem.audio.fullname}${audioItem.audio.ext}*`);
+                dispatcher.emit('finish');
             });
             dispatcher.on('finish', () => {
-                console.log('audio has finished playing!');
-                if(leaveAfter) voiceChannel.leave();
+                robot.audioQueues[guild].shift();
+                if(robot.audioQueues[guild].length > 0) {
+                    console.log('Playing next audio.');
+                    this.playAudio(robot, guild);
+                }
+                else if(audioItem.leaveAfter) audioItem.channel.leave();
+                if(audioItem.audio.isTTS){
+                    fs.unlink(audioItem.audio.path, ()=>console.log(`${audioItem.audio.name} deleted`));
+                }
             });
         })
         .catch(err => {
@@ -87,13 +156,11 @@ module.exports = {
                 let ext = path.extname(file);
                 if(ext.match(AUDIO_EXT_REGEX)){
                     let fileName = file.substring(0, file.length-ext.length);
-                    let fileObj = {
-                        name: fileName,
-                        ext: ext,
-                        path: newPath.replace(/\\/g, "/"),
-                        size: fs.statSync(newPath).size,
-                        inDirectory: recursive
-                    };
+                    let fileObj = this.getBaseAudioObj(fileName);
+                    fileObj.ext = ext;
+                    fileObj.path = newPath.replace(/\\/g, "/");
+                    fileObj.size = fs.statSync(newPath).size;
+                    fileObj.inDirectory = recursive;
                     fileObj.fullname = fileObj.path.substr(libraryPathLength+1, fileObj.path.length-libraryPathLength-1-fileObj.ext.length);
                     arrayOfFiles.push(fileObj);
                 }
@@ -103,26 +170,26 @@ module.exports = {
         return arrayOfFiles;
     },
 
-    // downSampleStereoToMono: function (path) { //TODO: improve downsample strategy (choosing left may not be best)
-    //     console.log('downsampling ', path);
-    //     try {
-    //         // read stereo audio file into signed 16 array
-    //         let file = fs.readFileSync(path);
-    //         const data = new Int16Array(file);
+    queueTTS: function(robot, message, voiceChannel, text){
+        const ttsFile = `recordings\\${message.id}_tts.wav`;
+        say.export(text, 'Microsoft Zira Desktop', 1, ttsFile, (err) => {
+            const title = text.length > 15 ? `${text.slice(0,15)}...` : text;
+            const audio = this.getBaseAudioObj(title);
+            audio.ext = '';
+            audio.path = `${robot.directory}\\${ttsFile}`;
+            audio.fullname = title;
+            audio.caption = text;
+            audio.isTTS = true;
+            this.queueAudio(robot, voiceChannel, audio, message);
+        });
+    },
 
-    //         // create new array for the mono audio data
-    //         const ndata = new Int16Array(data.length/2);
+    incrementPlayCount: async function(robot, fileName){
+        let meta = await storageFunctions.getAudioMetadataAsync(robot);
+        if(!meta[fileName]) meta[fileName] = {};
 
-    //         // copy left audio data (skip the right part)
-    //         for (let i=0, j=0; i<data.length; i+=4) {
-    //             ndata[j++] = data[i];
-    //             ndata[j++] = data[i+1];
-    //         }
-
-    //         // save the mono audio file
-    //         fs.writeFileSync(path, Buffer.from(ndata), 'binary');
-    //     } catch (e) {
-    //         console.log(e);
-    //     }
-    // }
+        let plays = meta[fileName].plays || 0;
+        meta[fileName].plays = plays+1;
+        await storageFunctions.setAudioMetadataAsync(robot, meta);
+    }
 }
