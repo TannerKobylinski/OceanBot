@@ -50,7 +50,7 @@ module.exports = {
                 let audios = robot.audioFiles;
                 let selectedAudio = this.transcriptionToAudio(audios, transcription);
                 if(selectedAudio){
-                    audioFunctions.playAudio(robot, voiceChannel, selectedAudio);
+                    audioFunctions.queueAudio(robot, voiceChannel, selectedAudio, null);
                 }
 
                 this.userListenLoop(robot, message, connection); //continue looping!
