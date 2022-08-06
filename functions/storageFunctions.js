@@ -2,6 +2,7 @@ const AUDIO_METADATA_KEY = 'AUDIO_METADATA';
 const GAMES_LIST_CACHE_KEY = 'GAMES_LIST';
 const SERVER_DATA_KEY = 'SERVER_DATA';
 const USER_DATA_KEY = 'USER_DATA';
+const BOT_DATA = 'BOT_DATA';
 
 module.exports = {
     getAudioMetadataAsync: async function(robot){
@@ -19,6 +20,16 @@ module.exports = {
     },
     setGamesListCacheAsync: async function(robot, data){
         await robot.storage.setItem(GAMES_LIST_CACHE_KEY, data);
+    },
+
+    getBotDataAsync: async function(robot, key){
+        let data = await robot.storage.getItem(BOT_DATA) || {};
+        return data[key] || {};
+    },
+    setBotDataAsync: async function(robot, key, newData){
+        let data = await robot.storage.getItem(BOT_DATA) || {};
+        data[key] = newData;
+        await robot.storage.setItem(BOT_DATA, data);
     },
 
     getServerDataAsync: async function(robot, serverId){
