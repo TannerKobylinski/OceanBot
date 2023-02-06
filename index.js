@@ -2,6 +2,7 @@ const fs = require('fs');
 const Discord = require('discord.js');
 // const socketIo = require("socket.io");
 const dotenv = require('dotenv');
+const spellchecker = require('spellchecker');
 require('log-timestamp');
 const storageFunctions = require('./functions/storageFunctions');
 const audioFunctions = require('./functions/audioFunctions');
@@ -25,7 +26,7 @@ const commandFiles = fs.readdirSync('./commands').filter(file => file.endsWith('
 for (const file of commandFiles) {
     const fileCommands = require(`./commands/${file}`);
     for(let cmd of fileCommands){
-        client.commands.set(cmd.name, cmd);
+        if(!cmd.disabled) client.commands.set(cmd.name, cmd);
     }
 }
 robot.commands = client.commands;
@@ -35,19 +36,18 @@ dotenv.config();
 const BOT_TOKEN = process.env.DISCORD_TOKEN;
 client.login(BOT_TOKEN);
 robot.AUDIO_PATH = process.env.AUDIO_LIBRARY_PATH;
+robot.VIDEO_PATH = process.env.VIDEO_LIBRARY_PATH;
 robot.speech = require('@google-cloud/speech');
 
 
-// LIFECYCLE
-client.on('message', async message => {
+async function checkForCommand(message){
     let serverId = message.channel.guild.id;
     const BOT_PREFIX = await helperFunctions.getPrefixAsync(robot, serverId);
 
-    // if (message.author.bot) return; //ignore bots
     if (!message.content.startsWith(BOT_PREFIX) ) { //non-command messages
-        return;
+        return false;
     }
-    if (message.content.length <= BOT_PREFIX.length) return; // ignore just the prefix itself
+    if (message.content.length <= BOT_PREFIX.length) return false; // ignore just the prefix itself
 
     const args = message.content.slice(BOT_PREFIX.length).split(/\s+/);
     const command = args.shift().toLowerCase();
@@ -59,7 +59,8 @@ client.on('message', async message => {
         args.splice(i,1);
     }
     if (!client.commands.has(command)){
-        return message.react('❓');
+        message.react('❓');
+        return true;
     }
 
     try {
@@ -75,6 +76,32 @@ client.on('message', async message => {
     } catch (error) {
         console.error(error);
     }
+    return true;
+}
+
+// LIFECYCLE
+client.on('message', async message => {
+    if (message.author.bot) return; //ignore bots
+    const command = await checkForCommand(message);
+    if(command) return;
+
+    const userData = await storageFunctions.getUserDataAsync(robot, message.author.id);
+
+    if(!userData.spellcheck) return;
+
+    const result = spellchecker.checkSpelling(message.content);
+    if(result.length > 0){
+        corrections = {};
+        for(let r of result){
+            const word = message.content.slice(r.start, r.end);
+            corrections[word] = spellchecker.getCorrectionsForMisspelling(word);
+        }
+        let correctionMessage = '';
+        Object.entries(corrections).forEach((e) => correctionMessage += `\n⦁ ${e[0]} --> ${e[1].join(', ')}`);
+
+        await message.channel.send(`Oopsies! :relaxed:\n>>> ${message.author}: ***${message.content}***`)
+        await message.channel.send(`Did you mean: ${correctionMessage}`);
+    }
 });
 
 client.once('ready', async () => {
@@ -83,6 +110,19 @@ client.once('ready', async () => {
     // if(twitterFunctions.areParrots(robot)){//open up twitter stream
     //     robot.twitterStream = twitterFunctions.openStream(robot);
     // }
+});
+
+client.on('guildMemberSpeaking', async (member, speaking) =>{
+    const userId = member.user.id;
+
+    const voiceChannel = member.voice.channel;
+
+    if(robot.mocks && robot.mocks[userId] && !speaking.bitfield) {
+        const chanceToMock = 0.25
+        const rolled = Math.random();
+        console.log(rolled, chanceToMock);
+        if(rolled < chanceToMock) mockUser(robot, voiceChannel, robot.mocks[userId]);
+    }
 });
 
 client.on('voiceStateUpdate', async (oldState, newState) =>{
@@ -104,7 +144,7 @@ client.on('voiceStateUpdate', async (oldState, newState) =>{
         }
         await leaveChannelCheck(client, oldUserChannel, newState);
     }
-})
+});
 
 
 // FUNCTIONS
@@ -189,4 +229,20 @@ async function onServerJoin(client, newState){
             playAudio(voiceChannel, serverData.onjoin.split(' '), leaveAfter);
         }
     }
+}
+
+async function mockUser(robot, voiceChannel, args){
+    console.log('mockUser: ', voiceChannel.name, args);
+
+    // GET ALL AVAILABLE AUDIO
+    if(!robot.audioFiles) robot.audioFiles = audioFunctions.getAudioFiles(robot.AUDIO_PATH);
+    const allAudio = robot.audioFiles;
+
+    // SELECT THE AUDIO
+    audio = audioFunctions.selectAudio(allAudio, args);
+    if(!audio) return null;
+
+    // PLAY THE AUDIO
+    await audioFunctions.incrementPlayCount(robot, audio.name);
+    audioFunctions.queueAudio(robot, voiceChannel, audio, null);
 }

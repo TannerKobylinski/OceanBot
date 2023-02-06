@@ -1,17 +1,13 @@
 const reactFunctions = require('../functions/reactFunctions');
+const { getMessageReferenced } = require('../functions/utils');
 
 module.exports = [{
     name: 'react',
     description: 'React to the latest channel message with the given characters',
     async execute(robot, message, args, options) {
-        const reference = message.reference;
-        let messageToReactTo;
+        let messageToReactTo = await getMessageReferenced(message); //grab referenced message if it exists
 
-        // Get message to react to
-        if(reference) {
-            messageToReactTo = await message.channel.messages.fetch(reference.messageID);
-        }
-        else {
+        if(messageToReactTo.id == message.id) { //if we didnt get referenced message, find last message in channel
             let messages = await message.channel.messages.fetch({ limit: 2 });
             messageToReactTo = messages.last();
         }

@@ -9,7 +9,8 @@ const fs = require('fs');
 
 module.exports = [{
     name: 'setbackend',
-    permissions: ['ADMINISTRATOR'],
+    disabled: true,
+    permissions: ['DEVELOPER'],
     description: 'Set DALL-E backend URL',
     async execute(robot, message, args, options) {
         if(!args[0]) return message.reply('Specify backend!');
@@ -22,6 +23,7 @@ module.exports = [{
     }
 },{
     name: 'dalle',
+    disabled: true,
     description: 'Have DALL-E generate an image',
     async execute(robot, message, args, options) {
         if(!args[0]) return message.reply('Specify text!');

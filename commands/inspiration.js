@@ -6,7 +6,7 @@ module.exports = [{
     description: 'Generate an inspirational quote!',
     async execute(robot, message) {
         //https://github.com/kishlaya/inspirobot-bot/blob/master/README.md
-        let image = await apiFunctions.getAsync(robot, 'https://inspirobot.me/api?generate=true', null, true);
+        let image = await apiFunctions.getAsync(robot, 'https://inspirobot.me/api?generate=true', null);
         message.reply(image);
     }
 }];

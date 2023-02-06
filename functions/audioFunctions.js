@@ -157,9 +157,10 @@ module.exports = {
                 if(ext.match(AUDIO_EXT_REGEX)){
                     let fileName = file.substring(0, file.length-ext.length);
                     let fileObj = this.getBaseAudioObj(fileName);
+                    const stats = fs.statSync(newPath);
                     fileObj.ext = ext;
                     fileObj.path = newPath.replace(/\\/g, "/");
-                    fileObj.size = fs.statSync(newPath).size;
+                    fileObj.size = stats.size;
                     fileObj.inDirectory = recursive;
                     fileObj.fullname = fileObj.path.substr(libraryPathLength+1, fileObj.path.length-libraryPathLength-1-fileObj.ext.length);
                     arrayOfFiles.push(fileObj);
@@ -190,6 +191,21 @@ module.exports = {
 
         let plays = meta[fileName].plays || 0;
         meta[fileName].plays = plays+1;
+        await storageFunctions.setAudioMetadataAsync(robot, meta);
+    },
+
+    setCreatedDate: async function(robot, audioFiles){
+        let meta = await storageFunctions.getAudioMetadataAsync(robot);
+        for(let audio of audioFiles){
+            if(!meta[audio.name]) meta[audio.name] = {};
+            if(!meta[audio.name].created){
+                const created = fs.statSync(audio.path).birthtime;
+                meta[audio.name].created = created;
+            }
+        }
+        // for(const [key, value] of Object.entries(meta)){
+        //     if(!value.created) delete meta[key]; //remove metadata that doesn't exist, uncomment for cleanup
+        // }
         await storageFunctions.setAudioMetadataAsync(robot, meta);
     }
 }

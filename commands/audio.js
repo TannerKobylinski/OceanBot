@@ -7,6 +7,7 @@ const audioReactFunctions = require('../functions/audioReactFunctions');
 const MSG_CD = 1000;
 const MAX_AUDIO_QUEUE_LENGTH = 25;
 const TOP_AUDIO_PLAYS_LENGTH = 15;
+const RECENT_AUDIO_LENGTH = 15;
 const YOUTUBE_REGEX = /^((?:https?:)?\/\/)?((?:www|m)\.)?((?:youtube\.com|youtu.be))(\/(?:[\w\-]+\?v=|embed\/|v\/)?)([\w\-]+)(\S+)?$/;
 
 module.exports = [{
@@ -127,7 +128,7 @@ module.exports = [{
             audio = audioFunctions.selectAudio(robot.audioFiles);
             message.reply("No audio to replay! Picking randomly!");
         }
-        await incrementPlayCount(robot, audio.name);
+        await audioFunctions.incrementPlayCount(robot, audio.name);
         message.reply(`queueing *${audio.fullname}${audio.ext}*`);
         audioFunctions.queueAudio(robot, voiceChannel, audio, message);
     }
@@ -183,7 +184,9 @@ module.exports = [{
     permissions: ['DEVELOPER'],
     description: 'Index all audio files, update list',
     async execute(robot, message, args, options) {
-        robot.audioFiles = audioFunctions.getAudioFiles(robot.AUDIO_PATH);
+        const audioFiles = audioFunctions.getAudioFiles(robot.AUDIO_PATH);
+        audioFunctions.setCreatedDate(robot, audioFiles);
+        robot.audioFiles = audioFiles;
         message.react('🔍');
         console.log('Audio re-indexed');
     }
@@ -269,12 +272,45 @@ module.exports = [{
 
         kvs.sort((a,b) => b[1].plays - a[1].plays);
         let size = Math.min(TOP_AUDIO_PLAYS_LENGTH, kvs.length);
-        let list = `Top ${size} audios`;
+        let list = `Top ${size} audios:`;
         for(let i=0; i<size; i++){
             let audio = kvs[i];
             list += `\n${i==0?'>>> ':''}*${audio[0]}* - [${audio[1].plays} plays]`;
         }
         message.reply(list);
+    }
+},{
+    name: 'recent',
+    description: 'Show the most recently added audios',
+    async execute(robot, message, args, options) {
+        const metadata = await storageFunctions.getAudioMetadataAsync(robot);
+        const kvs = Object.entries(metadata);
+        if(!metadata || !kvs || kvs.length < 1) message.reply('Issue gathering metadata!');
+
+        kvs.sort((a,b) => new Date(b[1].created) - new Date(a[1].created));
+        let size = Math.min(RECENT_AUDIO_LENGTH, kvs.length);
+        let list = `Last ${size} audios added:`;
+        for(let i=0; i<size; i++){
+            let audio = kvs[i];
+            list += `\n${i==0?'>>> ':''}***${audio[0]}*** - ${new Date(audio[1].created).toLocaleDateString()}`;
+        }
+        message.reply(list);
+    }
+},{
+    name: 'queue',
+    description: 'Show the contents of the queue',
+    async execute(robot, message, args, options) {
+        const serverId = message.channel.guild.id;
+        const queue = robot.audioQueues[serverId];
+
+        if(!queue || queue.length === 0) return message.reply('Queue is empty!');
+
+        let msg = 'Audio queue: ';
+        for(let i=0; i<queue.length; i++){
+            const audio = queue[i];
+            msg += `\n${i==0?'>>> ':''}${i+1}. *${audio.audio.fullname}*${i==0?' [PLAYING]':''}`;
+        }
+        return message.reply(msg);
     }
 }];
 
