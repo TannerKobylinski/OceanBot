@@ -7,16 +7,29 @@ module.exports = [{
     options: [
         {
             "name": "phrase",
-            "description": "phrase to react with",
+            "description": "Phrase to react with",
+            "type": 3,
+            "required": false,
+        },
+        {
+            "name": "message_id",
+            "description": "Message to react to",
             "type": 3,
             "required": false,
         }
     ],
     async execute(robot, interaction) {
         let phrase = interaction.options.getString('phrase');
-        let messages = await interaction.channel.messages.fetch({ limit: 1 });
-        let messageToReactTo = messages.last();
+        let messageId = interaction.options.getString('message_id');
+        let messageToReactTo;
 
+        if(messageId) {
+            messageToReactTo = await interaction.channel.messages.fetch(messageId);
+        }
+        else {
+            let messages = await interaction.channel.messages.fetch({ limit: 1 });
+            messageToReactTo = messages.last();
+        }
         // React to message if retrieved
         if(!messageToReactTo) return;
         await interaction.deferReply();
