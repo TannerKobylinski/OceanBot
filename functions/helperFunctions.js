@@ -1,6 +1,6 @@
 const storageFunctions = require("./storageFunctions");
 
-const MESSAGE_CHAR_LIMIT = 1600;
+const MESSAGE_CHAR_LIMIT = 2000;
 const DEFAULT_PREFIX = '!';
 
 module.exports = {
@@ -8,8 +8,8 @@ module.exports = {
         return new Promise(resolve => setTimeout(resolve, ms));
     },
 
-    messageReplyLong: function(message, str){
-        if(str.length <= MESSAGE_CHAR_LIMIT) return message.reply(str);
+    messageReplyLong: function(interaction, str){
+        if(str.length <= MESSAGE_CHAR_LIMIT) return interaction.reply(str);
 
         let firstMessage = true;
 
@@ -24,14 +24,14 @@ module.exports = {
             }
             else{ //reply with full chunks
                 if(firstMessage){
-                    message.reply(chunk)
+                    interaction.reply(chunk)
                     firstMessage=false;
                 }
-                else message.channel.send(chunk);
+                else interaction.channel.send(chunk);
                 chunk = '';
             }
         }
-        if(chunk.length > 0) message.channel.send(chunk); //send last bit
+        if(chunk.length > 0) interaction.channel.send(chunk); //send last bit
     },
 
     getPrefixAsync: async function(robot, serverId){

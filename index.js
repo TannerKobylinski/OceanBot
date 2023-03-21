@@ -1,38 +1,53 @@
 const fs = require('fs');
-const Discord = require('discord.js');
-// const socketIo = require("socket.io");
+const util = require('util');
+const { Client, GatewayIntentBits, REST, Routes } = require('discord.js');
 const dotenv = require('dotenv');
 const spellchecker = require('spellchecker');
 require('log-timestamp');
 const storageFunctions = require('./functions/storageFunctions');
 const audioFunctions = require('./functions/audioFunctions');
-const twitterFunctions = require('./functions/twitterFunctions');
 const helperFunctions = require('./functions/helperFunctions');
 
 let robot = {};
 robot.storage = require('node-persist');
 robot.https = require('https');
 robot.axios = require('axios');
-// robot.io = socketIo()
-
+dotenv.config();
 
 // INITIALIZE
 robot.audioQueues = {};
 robot.dispatchers = {};
 robot.directory = __dirname;
-const client = new Discord.Client();
-client.commands = new Discord.Collection();
+const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates] });
+client.commands = [];
+robot.commands = [];
 const commandFiles = fs.readdirSync('./commands').filter(file => file.endsWith('.js'));
 for (const file of commandFiles) {
     const fileCommands = require(`./commands/${file}`);
+    if(Object.keys(fileCommands).length < 1) continue;
     for(let cmd of fileCommands){
-        if(!cmd.disabled) client.commands.set(cmd.name, cmd);
+        if(!cmd.disabled) {
+            robot.commands.push(cmd);
+            if(cmd.description) cmd.description = cmd.description.slice(0,99);
+            cmd.execCommand = undefined;
+            client.commands.push(cmd);
+        }
     }
 }
-robot.commands = client.commands;
+console.log(client.commands);
+const rest = new REST({ version: '10' }).setToken(process.env['DISCORD_TOKEN']);
+(async () => {
+    try {
+        console.log('Started refreshing application (/) commands.');
+        await rest.put(Routes.applicationCommands(process.env['CLIENT_ID']), { headers: {}, body: client.commands });
+        console.log('Successfully reloaded application (/) commands.');
+    } catch (error) {
+        console.error(error);
+    }
+})();
+
 robot.voice = client.voice;
 robot.client = client;
-dotenv.config();
 const BOT_TOKEN = process.env.DISCORD_TOKEN;
 client.login(BOT_TOKEN);
 robot.AUDIO_PATH = process.env.AUDIO_LIBRARY_PATH;
@@ -40,38 +55,23 @@ robot.VIDEO_PATH = process.env.VIDEO_LIBRARY_PATH;
 robot.speech = require('@google-cloud/speech');
 
 
-async function checkForCommand(message){
-    let serverId = message.channel.guild.id;
-    const BOT_PREFIX = await helperFunctions.getPrefixAsync(robot, serverId);
-
-    if (!message.content.startsWith(BOT_PREFIX) ) { //non-command messages
-        return false;
-    }
-    if (message.content.length <= BOT_PREFIX.length) return false; // ignore just the prefix itself
-
-    const args = message.content.slice(BOT_PREFIX.length).split(/\s+/);
-    const command = args.shift().toLowerCase();
+async function checkForCommand(interaction){
+    const command = interaction.commandName;
     let options = [];
-    for(let i=args.length-1; i>=0; i--){
-        let foundOption = args[i].match(/\-\-(\w+[\1-]?\w+)/);
-        if(!foundOption) continue;
-        options.push(foundOption[1]);
-        args.splice(i,1);
-    }
-    if (!client.commands.has(command)){
-        message.react('❓');
-        return true;
-    }
 
     try {
-        let execCommand = client.commands.get(command);
-        if(memberCanExecute(message.member, execCommand)){
-            execCommand.execute(robot, message, args, options).catch((error) => {
+        let execCommand = robot.commands.find((c) => c.name === command);
+        if(!execCommand) return false;
+        console.log(execCommand);
+        if(memberCanExecute(interaction.member, execCommand)){
+            execCommand.execute(robot, interaction).catch(async (error) => {
                 console.error(error);
             });
         }
         else {
-            console.log(`User ${message.member.name} lacks ${execCommand.permissions.join(' or ')} permissions!`);
+            let msg = `User ${interaction.member.name} lacks ${execCommand.permissions.join(' or ')} permissions!`;
+            interaction.reply(msg);
+            console.log(msg);
         }
     } catch (error) {
         console.error(error);
@@ -80,10 +80,14 @@ async function checkForCommand(message){
 }
 
 // LIFECYCLE
+
+client.on('interactionCreate', async interaction => {
+    if (!(interaction.isChatInputCommand() || interaction.isContextMenuCommand)) return;
+    checkForCommand(interaction);
+});
+
 client.on('message', async message => {
     if (message.author.bot) return; //ignore bots
-    const command = await checkForCommand(message);
-    if(command) return;
 
     const userData = await storageFunctions.getUserDataAsync(robot, message.author.id);
 
@@ -107,9 +111,6 @@ client.on('message', async message => {
 client.once('ready', async () => {
     await robot.storage.init();
     getConnectedServers();
-    // if(twitterFunctions.areParrots(robot)){//open up twitter stream
-    //     robot.twitterStream = twitterFunctions.openStream(robot);
-    // }
 });
 
 client.on('guildMemberSpeaking', async (member, speaking) =>{
@@ -148,12 +149,12 @@ client.on('voiceStateUpdate', async (oldState, newState) =>{
 
 
 // FUNCTIONS
-function playAudio(voiceChannel, args, leaveAfter){
+function playAudio(voiceChannel, keywords, leaveAfter){
     if(!robot.audioFiles) robot.audioFiles = audioFunctions.getAudioFiles(robot.AUDIO_PATH);
     const allAudio = robot.audioFiles;
-    let audio = audioFunctions.selectAudio(allAudio, args);
+    let audio = audioFunctions.selectAudio(allAudio, keywords);
     if(audio) audioFunctions.queueAudio(robot, voiceChannel, audio, null, leaveAfter);
-    else console.log(`No audio found for [${args}])`);
+    else console.log(`No audio found for [${keywords}])`);
 }
 
 function getConnectedServers(){
@@ -231,15 +232,15 @@ async function onServerJoin(client, newState){
     }
 }
 
-async function mockUser(robot, voiceChannel, args){
-    console.log('mockUser: ', voiceChannel.name, args);
+async function mockUser(robot, voiceChannel, keywords){
+    console.log('mockUser: ', voiceChannel.name, keywords);
 
     // GET ALL AVAILABLE AUDIO
     if(!robot.audioFiles) robot.audioFiles = audioFunctions.getAudioFiles(robot.AUDIO_PATH);
     const allAudio = robot.audioFiles;
 
     // SELECT THE AUDIO
-    audio = audioFunctions.selectAudio(allAudio, args);
+    audio = audioFunctions.selectAudio(allAudio, keywords);
     if(!audio) return null;
 
     // PLAY THE AUDIO

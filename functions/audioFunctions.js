@@ -2,11 +2,11 @@ const fs = require("fs");
 const path = require("path");
 const ytdl = require("ytdl-core");
 const say = require('say')
+const { joinVoiceChannel, createAudioPlayer, createAudioResource, VoiceConnectionStatus, AudioPlayerStatus} = require('@discordjs/voice');
 const storageFunctions = require('../functions/storageFunctions');
 
 const AUDIO_EXT_REGEX = /\.wav|\.mp3$/i;
 const LONG_AUDIO_BYTES_THRESHOLD = 2000 * 1024; // 2kB
-const YOUTUBE_STREAM_OPTIONS = { seek: 0, volume: .35 };
 
 module.exports = {
     getBaseAudioObj: function(name, isLinked){
@@ -22,27 +22,30 @@ module.exports = {
         }
     },
 
-    queueAudio: function(robot, voiceChannel, audio, message, leaveAfter){
+    queueAudio: function(robot, voiceChannel, audio, interaction, leaveAfter){
         console.log(`queueing audio ${audio.name}`);
         const audioMeta = {
             channel: voiceChannel,
-            message,
+            interaction,
             audio,
             leaveAfter,
         };
         const guild = voiceChannel.guild.id;
         if(!robot.audioQueues[guild]) robot.audioQueues[guild] = [];
-        const playAudioAfter = robot.audioQueues[guild].length == 0;
         robot.audioQueues[guild].push(audioMeta);
-        console.log(`Queue: ${robot.audioQueues[guild].length}, ${JSON.stringify(robot.audioQueues[guild])}`);
-        if(playAudioAfter) this.playAudio(robot, guild);
+        console.log(`Queue: ${robot.audioQueues[guild].length}, ${JSON.stringify(robot.audioQueues[guild].map((q) => q.audio))}`);
+        if(robot.audioQueues[guild].length === 1) this.playAudio(robot, guild);
     },
 
     playAudio: async function(robot, guild){
-        console.log(`playAudio with ${robot.audioQueues[guild].length} audios to play`);
         if(!robot.audioQueues[guild] || robot.audioQueues[guild].length == 0) return;
+        console.log(`playAudio with ${robot.audioQueues[guild].length} audios to play`);
         let audioItem = robot.audioQueues[guild][0];
         console.log(`Popping ${audioItem.audio.name}`);
+
+        if(!robot.audioPlayers) robot.audioPlayers = {};
+        if(!robot.audioPlayers[guild]) robot.audioPlayers[guild] = createAudioPlayer();
+        const player = robot.audioPlayers[guild];
 
         // STORE LAST PLAYED
         if(!audioItem.audio.isTTS) {
@@ -51,46 +54,78 @@ module.exports = {
             await storageFunctions.setServerDataAsync(robot, audioItem.channel.guild.id, serverData);
         }
 
-        return audioItem.channel.join().then(connection => {
-
-            if(audioItem.message) audioItem.message.reply(`playing *${audioItem.audio.fullname}${audioItem.audio.ext}*`);
-
-            let dispatcher;
-            if(audioItem.audio.isLinked) {
-                const stream = ytdl(audioItem.audio.url, { filter: 'audioonly' });
-                dispatcher = connection.play(stream, YOUTUBE_STREAM_OPTIONS);
-            }
-            else {
-                dispatcher = connection.play(`${audioItem.audio.path}`);
-            }
-            robot.dispatchers[guild] = dispatcher;
-
-            dispatcher.on('start', () => {
-                console.log(`Playing audio "${audioItem.audio.fullname}"`);
-            });
-            dispatcher.on('end', (end) => {
-                console.log(end);
-            });
-            dispatcher.on('error', (error) => {
-                console.error(error);
-                audioItem.message.reply(`error playing *${audioItem.audio.fullname}${audioItem.audio.ext}*`);
-                dispatcher.emit('finish');
-            });
-            dispatcher.on('finish', () => {
-                robot.audioQueues[guild].shift();
-                if(robot.audioQueues[guild].length > 0) {
-                    console.log('Playing next audio.');
-                    this.playAudio(robot, guild);
-                }
-                else if(audioItem.leaveAfter) audioItem.channel.leave();
-                if(audioItem.audio.isTTS){
-                    fs.unlink(audioItem.audio.path, ()=>console.log(`${audioItem.audio.name} deleted`));
-                }
-            });
-        })
-        .catch(err => {
-            console.log(err);
+        const connection = await joinVoiceChannel({
+            channelId: audioItem.channel.id,
+            guildId: audioItem.channel.guild.id,
+            adapterCreator: audioItem.channel.guild.voiceAdapterCreator,
+            selfDeaf: false
         });
+
+        connection.on(VoiceConnectionStatus.Ready, () => {
+            console.log('The connection has entered the Ready state - ready to play audio!');
+        });
+
+        connection.on(VoiceConnectionStatus.Disconnected, () => {
+            console.log('The connection has Disconnected!');
+            robot.audioQueues[guild] = [];
+        });
+
+        connection.on(VoiceConnectionStatus.Destroyed, () => {
+            console.log('The connection has been Destroyed!');
+            robot.audioQueues[guild] = [];
+        });
+
+        if(!audioItem.interaction.sentPlaying) audioItem.interaction.channel.send(`playing *${audioItem.audio.fullname}${audioItem.audio.ext}*`);
+
+        if(audioItem.audio.isLinked) {
+            const stream = ytdl(audioItem.audio.url, { filter: 'audioonly' });
+            const resource = createAudioResource(stream, { inlineVolume: true });
+            resource.volume.setVolume(0.3);
+            player.play(resource);
+        }
+        else {
+            const resource = createAudioResource(`${audioItem.audio.path}`);
+            player.play(resource);
+        }
+
+        connection.subscribe(player);
+        player.on(AudioPlayerStatus.Idle, () => {
+            robot.audioQueues[guild].shift();
+            this.playAudio(robot, guild);
+
+            if(robot.audioQueues[guild].length > 0) {
+                console.log('Playing next audio.');
+            }
+            else if(audioItem.leaveAfter) connection.disconnect();
+            if(audioItem.audio.isTTS) {
+                fs.unlink(audioItem.audio.path, () => console.log(`${audioItem.audio.name} deleted`));
+            }
+        });
+
+        // robot.dispatchers[guild] = dispatcher;
+
+        // dispatcher.on('start', () => {
+        //     console.log(`Playing audio "${audioItem.audio.fullname}"`);
+        // });
+        // dispatcher.on('end', (end) => {
+        //     console.log(end);
+        // });
+        // dispatcher.on('error', (error) => {
+        //     console.error(error);
+        //     audioItem.interaction.reply(`error playing *${audioItem.audio.fullname}${audioItem.audio.ext}*`);
+        //     dispatcher.emit('finish');
+        // });
+        // dispatcher.on('finish', () => {
+        //     robot.audioQueues[guild].shift();
+        //     if(robot.audioQueues[guild].length > 0) {
+        //         console.log('Playing next audio.');
+        //         this.playAudio(robot, guild);
+        //     }
+        //     else if(audioItem.leaveAfter) audioItem.channel.leave();
+        //     if(audioItem.audio.isTTS){
+        //         fs.unlink(audioItem.audio.path, ()=>console.log(`${audioItem.audio.name} deleted`));
+        //     }
+        // });
     },
 
     selectAudio: function(audioObjects, phrases){
@@ -171,8 +206,8 @@ module.exports = {
         return arrayOfFiles;
     },
 
-    queueTTS: function(robot, message, voiceChannel, text){
-        const ttsFile = `recordings\\${message.id}_tts.wav`;
+    queueTTS: function(robot, interaction, voiceChannel, text){
+        const ttsFile = `recordings\\${interaction.id}_tts.wav`;
         say.export(text, 'Microsoft Zira Desktop', 1, ttsFile, (err) => {
             const title = text.length > 15 ? `${text.slice(0,15)}...` : text;
             const audio = this.getBaseAudioObj(title);
@@ -181,7 +216,7 @@ module.exports = {
             audio.fullname = title;
             audio.caption = text;
             audio.isTTS = true;
-            this.queueAudio(robot, voiceChannel, audio, message);
+            this.queueAudio(robot, voiceChannel, audio, interaction);
         });
     },
 

@@ -1,17 +1,17 @@
 
 module.exports = [{
     name: 'roll',
-    description: 'Roll an N sided die - N defaults to 6',
+    description: 'Roll an n-sided die, defaults to 6',
     options: [
         {
-            "name": "sides",
+            "name": "n",
             "description": "number of sides",
             "type": 4,
             "required": false,
         }
     ],
     async execute(robot, interaction) {
-        let sides = interaction.options.getInteger('sides');
+        let sides = interaction.options.getInteger('n');
         let max = 6;
         let min = 1;
         if(sides) {
