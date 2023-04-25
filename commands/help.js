@@ -3,19 +3,13 @@ const helperFunctions = require('../functions/helperFunctions');
 module.exports = [{
     name: 'help',
     description: 'List out all commands',
-    async execute(robot, message, args) {
-        let serverId = message.channel.guild.id;
+    async execute(robot, interaction) {
         let list = '**Bot Commands**';
         robot.commands.sort((a,b) => a.name.localeCompare(b.name));
-        const BOT_PREFIX = await helperFunctions.getPrefixAsync(robot, serverId);
+        console.log(robot.commands);
         for(let cmd of robot.commands){
-            list += `\n${formatCommand(BOT_PREFIX, cmd)}`;
+            list += `\n***/${cmd.name}***: *${cmd.description}*`;
         }
-        message.reply(list);
+        return interaction.reply(list);
     },
 }];
-
-function formatCommand(prefix, command){
-    command = command[1];
-    return `${prefix}${command.name}: *${command.description}*`;
-}

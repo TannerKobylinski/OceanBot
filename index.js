@@ -1,12 +1,14 @@
 const fs = require('fs');
 const util = require('util');
-const { Client, GatewayIntentBits, REST, Routes } = require('discord.js');
+const { Client, GatewayIntentBits, REST, Routes, Partials } = require('discord.js');
+const { Guilds, GuildVoiceStates, GuildMessages, DirectMessages, DirectMessageTyping, MessageContent } = GatewayIntentBits;
 const dotenv = require('dotenv');
 const spellchecker = require('spellchecker');
 require('log-timestamp');
 const storageFunctions = require('./functions/storageFunctions');
 const audioFunctions = require('./functions/audioFunctions');
 const helperFunctions = require('./functions/helperFunctions');
+const aiFunctions = require('./functions/aiFunctions');
 
 let robot = {};
 robot.storage = require('node-persist');
@@ -18,7 +20,7 @@ dotenv.config();
 robot.audioQueues = {};
 robot.dispatchers = {};
 robot.directory = __dirname;
-const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates] });
+const client = new Client({ intents: [ Guilds, GuildVoiceStates, GuildMessages, DirectMessages, DirectMessageTyping ], partials: [ Partials.Channel ] });
 client.commands = [];
 robot.commands = [];
 const commandFiles = fs.readdirSync('./commands').filter(file => file.endsWith('.js'));
@@ -52,6 +54,7 @@ const BOT_TOKEN = process.env.DISCORD_TOKEN;
 client.login(BOT_TOKEN);
 robot.AUDIO_PATH = process.env.AUDIO_LIBRARY_PATH;
 robot.VIDEO_PATH = process.env.VIDEO_LIBRARY_PATH;
+robot.AI_IMAGE_PATH = process.env.AI_IMAGE_LIBRARY_PATH;
 robot.speech = require('@google-cloud/speech');
 
 
@@ -79,15 +82,43 @@ async function checkForCommand(interaction){
     return true;
 }
 
+async function handleAutocomplete(interaction) {
+    if(interaction.commandName === 'play' || interaction.commandName === 'audio') {
+
+        if(!robot.audioFiles) robot.audioFiles = audioFunctions.getAudioFiles(robot.AUDIO_PATH);
+        let audios = robot.audioFiles;
+        const focusedValue = interaction.options.getFocused();
+        audios = audioFunctions.getMatchingAudio(audios, focusedValue.split(/\s+/));
+        audios = audios.map(a => ({ name: a.fullname, value: a.fullname})).slice(0,24);
+        try {
+            await interaction.respond(audios);
+        }
+        catch (error) {
+            console.error(error);
+        }
+    }
+}
+
 // LIFECYCLE
 
 client.on('interactionCreate', async interaction => {
-    if (!(interaction.isChatInputCommand() || interaction.isContextMenuCommand)) return;
-    checkForCommand(interaction);
+    if (interaction.isChatInputCommand()) await checkForCommand(interaction);
+    else if (interaction.isAutocomplete()) await handleAutocomplete(interaction);
+    else return;
 });
 
-client.on('message', async message => {
+client.on('messageCreate', async message => {
     if (message.author.bot) return; //ignore bots
+    if (message.guildId) return; //ignore non-dms
+    console.log(message.content);
+    try {
+        const resp = await aiFunctions.chatAi(robot, message.content);
+        message.channel.send(resp.response);
+    }
+    catch(error){
+        return console.error(error);
+    }
+
 
     const userData = await storageFunctions.getUserDataAsync(robot, message.author.id);
 
@@ -113,22 +144,22 @@ client.once('ready', async () => {
     getConnectedServers();
 });
 
-client.on('guildMemberSpeaking', async (member, speaking) =>{
-    const userId = member.user.id;
+// client.on('guildMemberSpeaking', async (member, speaking) =>{ //deprecated
+//     const userId = member.user.id;
 
-    const voiceChannel = member.voice.channel;
+//     const voiceChannel = member.voice.channel;
 
-    if(robot.mocks && robot.mocks[userId] && !speaking.bitfield) {
-        const chanceToMock = 0.25
-        const rolled = Math.random();
-        console.log(rolled, chanceToMock);
-        if(rolled < chanceToMock) mockUser(robot, voiceChannel, robot.mocks[userId]);
-    }
-});
+//     if(robot.mocks && robot.mocks[userId] && !speaking.bitfield) {
+//         const chanceToMock = 0.25
+//         const rolled = Math.random();
+//         console.log(rolled, chanceToMock);
+//         if(rolled < chanceToMock) mockUser(robot, voiceChannel, robot.mocks[userId]);
+//     }
+// });
 
 client.on('voiceStateUpdate', async (oldState, newState) =>{
-    let oldUserChannel = oldState.channelID;
-    let newUserChannel = newState.channelID;
+    let oldUserChannel = oldState.channelId;
+    let newUserChannel = newState.channelId;
     let botId = client.user.id;
 
     if(newState.member.id == botId) return; //ignore self

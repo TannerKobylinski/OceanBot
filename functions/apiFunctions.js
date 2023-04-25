@@ -1,3 +1,4 @@
+const fs = require("fs");
 
 async function getAsync(robot, url, options, parseBody){
     options = options || {};
@@ -19,7 +20,7 @@ async function getAsync(robot, url, options, parseBody){
                 resolve(body);
             });
         });
-    })
+    });
 }
 
 async function postAsync(robot, url, body, options){
@@ -32,7 +33,27 @@ async function postAsync(robot, url, body, options){
     });
 }
 
+async function downloadImageAsync(robot, url, filename, options){
+    if(!url || url.length <1) throw Error('Missing url!');
+    options = options || {};
+    const filepath = `images/ai/${filename}.jpg`;
+    return new Promise((resolve, reject) => {
+        robot.https.get(url, options, (res) => {
+            if (res.statusCode === 200) {
+                res.pipe(fs.createWriteStream(filepath))
+                    .on('error', reject)
+                    .once('close', () => resolve(filepath));
+            }
+            else {
+                res.resume();
+                reject(new Error(`Request Failed With a Status Code: ${res.statusCode}`));
+            }
+        });
+    });
+}
+
 module.exports = {
     getAsync,
-    postAsync
+    postAsync,
+    downloadImageAsync
 }

@@ -21,6 +21,7 @@ module.exports = [{
             "name": "keywords",
             "description": "keywords in audio name to look for",
             "type": 3,
+            "autocomplete": true,
             "required": false,
         },
         {
@@ -40,6 +41,10 @@ module.exports = [{
         if (!permissions.has(PermissionsBitField.Flags.Connect) || !permissions.has(PermissionsBitField.Flags.Speak)) {
             return interaction.reply("I need the permissions to join and speak in your voice channel!");
         }
+
+
+        let botMember = await interaction.guild.members.fetch(interaction.client.user.id);
+        await botMember.setNickname(`OceanBot (/help)`);
 
         let keywords = (interaction.options.getString('keywords') || '').split(/\s+/);
         let youtubeUrl = interaction.options.getString('url');
@@ -104,12 +109,12 @@ module.exports = [{
                 });
                 stream.on('error', (err) => {
                     console.error(err);
-                    interaction.reply(`trouble playing <${youtubeUrl}>`);
+                    return interaction.reply(`trouble playing <${youtubeUrl}>`);
                 })
             }
             catch(err){
                 console.error(err);
-                interaction.reply(`trouble playing <${youtubeUrl}>`);
+                return interaction.reply(`trouble playing <${youtubeUrl}>`);
             }
         }
     }
@@ -162,18 +167,27 @@ module.exports = [{
     name: 'replay',
     description: 'Replay the last audio clip played in the server',
     async execute(robot, interaction) {
+        const serverId = interaction.guild.id;
         const voiceChannel = interaction.member.voice.channel;
         if (!voiceChannel) return interaction.reply("You must be in a voice channel!");
-        let serverData = await storageFunctions.getServerDataAsync(robot, interaction.channel.guild.id);
+        let serverData = await storageFunctions.getServerDataAsync(robot, serverId);
         let audio = serverData.lastAudio;
-        let response;
+        let response = '';
         if (!audio){
             if(!robot.audioFiles) robot.audioFiles = audioFunctions.getAudioFiles(robot.AUDIO_PATH);
             audio = audioFunctions.selectAudio(robot.audioFiles);
             response = "No audio to replay! Picking randomly!\n";
         }
         await audioFunctions.incrementPlayCount(robot, audio.name);
-        interaction.reply(`${response}queueing *${audio.fullname}${audio.ext}*`);
+
+        if(robot.audioQueues[serverId] && robot.audioQueues[serverId].length > 0) {
+            interaction.reply(`${response}queueing *${audio.fullname}${audio.ext}*`);
+        }
+        else {
+            interaction.reply(`${response}playing *${audio.fullname}${audio.ext}*`);
+            interaction.sentPlaying = true;
+        }
+
         audioFunctions.queueAudio(robot, voiceChannel, audio, interaction);
     }
 },{
@@ -197,6 +211,7 @@ module.exports = [{
             "name": "keywords",
             "description": "keywords to filter for",
             "type": 3,
+            // "autocomplete": true,
             "required": false,
         }
     ],
@@ -315,23 +330,23 @@ module.exports = [{
 //         args = ['https://www.youtube.com/watch?v=oYmqJl4MoNI'];
 //         playExec.execute(robot, message);
 //     }
-// },{
-//     name: 'numplays',
-//     description: 'Show the top played audios',
-//     async execute(robot, message) {
-//         const metadata = await storageFunctions.getAudioMetadataAsync(robot);
-//         const kvs = Object.entries(metadata);
-//         if(!metadata || !kvs || kvs.length < 1) message.reply('Issue gathering metadata!');
+},{
+    name: 'numplays',
+    description: 'Show the top played audios',
+    async execute(robot, interaction) {
+        const metadata = await storageFunctions.getAudioMetadataAsync(robot);
+        const kvs = Object.entries(metadata);
+        if(!metadata || !kvs || kvs.length < 1) return interaction.reply('Issue gathering metadata!');
 
-//         kvs.sort((a,b) => b[1].plays - a[1].plays);
-//         let size = Math.min(TOP_AUDIO_PLAYS_LENGTH, kvs.length);
-//         let list = `Top ${size} audios:`;
-//         for(let i=0; i<size; i++){
-//             let audio = kvs[i];
-//             list += `\n${i==0?'>>> ':''}*${audio[0]}* - [${audio[1].plays} plays]`;
-//         }
-//         message.reply(list);
-//     }
+        kvs.sort((a,b) => b[1].plays - a[1].plays);
+        let size = Math.min(TOP_AUDIO_PLAYS_LENGTH, kvs.length);
+        let list = `Top ${size} audios:`;
+        for(let i=0; i<size; i++){
+            let audio = kvs[i];
+            list += `\n${i==0?'>>> ':''}*${audio[0]}* - [${audio[1].plays} plays]`;
+        }
+        interaction.reply(list);
+    }
 },{
     name: 'recent',
     description: 'Show the most recently added audios',
@@ -349,21 +364,21 @@ module.exports = [{
         }
         return interaction.reply(list);
     }
-// },{
-//     name: 'queue',
-//     description: 'Show the contents of the queue',
-//     async execute(robot, message) {
-//         const serverId = message.channel.guild.id;
-//         const queue = robot.audioQueues[serverId];
+},{
+    name: 'queue',
+    description: 'Show the contents of the queue',
+    async execute(robot, interaction) {
+        const serverId = interaction.guild.id;
+        const queue = robot.audioQueues[serverId];
 
-//         if(!queue || queue.length === 0) return message.reply('Queue is empty!');
+        if(!queue || queue.length === 0) return interaction.reply('Queue is empty!');
 
-//         let msg = 'Audio queue: ';
-//         for(let i=0; i<queue.length; i++){
-//             const audio = queue[i];
-//             msg += `\n${i==0?'>>> ':''}${i+1}. *${audio.audio.fullname}*${i==0?' [PLAYING]':''}`;
-//         }
-//         return message.reply(msg);
-//     }
+        let msg = 'Audio queue: ';
+        for(let i=0; i<queue.length; i++){
+            const audio = queue[i];
+            msg += `\n${i==0?'>>> ':''}${i+1}. *${audio.audio.fullname}*${i==0?' [PLAYING]':''}`;
+        }
+        return interaction.reply(msg);
+    }
 }];
 

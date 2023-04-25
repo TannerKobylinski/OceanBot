@@ -49,7 +49,7 @@ module.exports = [{
                 await reactFunctions.reactToMessageWithLetters(messageToReactTo, letters);
             }
         }
-        await interaction.editReply(':)');
+        await interaction.editReply(':)', {ephemeral: true});
         await interaction.deleteReply();
     }
 }];

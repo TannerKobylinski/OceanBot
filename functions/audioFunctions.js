@@ -67,6 +67,12 @@ module.exports = {
 
         connection.on(VoiceConnectionStatus.Disconnected, () => {
             console.log('The connection has Disconnected!');
+            try {
+                connection.destroy();
+            }
+            catch (error) {
+                console.error(error);
+            }
             robot.audioQueues[guild] = [];
         });
 
@@ -75,7 +81,7 @@ module.exports = {
             robot.audioQueues[guild] = [];
         });
 
-        if(!audioItem.interaction.sentPlaying) audioItem.interaction.channel.send(`playing *${audioItem.audio.fullname}${audioItem.audio.ext}*`);
+        if(audioItem.interaction && !audioItem.interaction.sentPlaying) audioItem.interaction.channel.send(`playing *${audioItem.audio.fullname}${audioItem.audio.ext}*`);
 
         if(audioItem.audio.isLinked) {
             const stream = ytdl(audioItem.audio.url, { filter: 'audioonly' });
@@ -238,9 +244,9 @@ module.exports = {
                 meta[audio.name].created = created;
             }
         }
-        // for(const [key, value] of Object.entries(meta)){
-        //     if(!value.created) delete meta[key]; //remove metadata that doesn't exist, uncomment for cleanup
-        // }
+        for(const [key, value] of Object.entries(meta)){
+            if(!value.created) delete meta[key]; //remove metadata that doesn't exist, uncomment for cleanup
+        }
         await storageFunctions.setAudioMetadataAsync(robot, meta);
     }
 }
